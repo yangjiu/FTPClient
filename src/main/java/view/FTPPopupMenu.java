@@ -7,6 +7,7 @@ import javax.swing.JOptionPane;
 import javax.swing.JPopupMenu;
 import javax.swing.JMenuItem;
 import javax.swing.JScrollPane;
+import javax.swing.JTable;
 
 import client.FTPFile;
 
@@ -169,7 +170,7 @@ public class FTPPopupMenu extends JPopupMenu {
 		String extension = "";
 		if (oldFilename.contains(".")) extension = oldFilename.substring(oldFilename.lastIndexOf("."));
 		newFilename+=extension;
-		view.changeRemoteName(oldFilename, newFilename);
+		view.changeRemoteFilename(oldFilename, newFilename);
 	}
 	
 	private void changeRigths() throws IOException {
@@ -194,6 +195,11 @@ public class FTPPopupMenu extends JPopupMenu {
 				"Problem!",
 				JOptionPane.WARNING_MESSAGE);
 		return ;
+	}
+	
+	public boolean isMouseOnTable() {
+		if (this.getInvoker() instanceof JTable) return true;
+		else return false;
 	}
 
 }

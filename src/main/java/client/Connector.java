@@ -19,6 +19,8 @@ import java.util.StringTokenizer;
 import java.util.Timer;
 import java.util.TimerTask;
 
+import javax.swing.JTextArea;
+
 /**
  * Class that is responsible for connection and functions working with FTP server
  * 
@@ -63,8 +65,8 @@ public class Connector {
 		
 		//server.setSoTimeout(1000*2);
 		
-		String response = read.readLine();
-		response = getAllResponses("220", response);
+		String response = null;
+		response = getAllResponses("220", read.readLine());
 
 		//System.out.println(read.readLine());
 
@@ -76,8 +78,8 @@ public class Connector {
 		}
 
 		sendLine("USER " + user);
-		response = read.readLine();
-		response = getAllResponses("331", response);
+
+		response = getAllResponses("331", read.readLine());
 		//System.out.println(response);
 
 		if (!response.startsWith("331 ")) {
@@ -88,8 +90,8 @@ public class Connector {
 		}
 		//System.out.println("PASS " + pass);
 		sendLine("PASS " + pass);
-		response = read.readLine();
-		response = getAllResponses("230", response);
+
+		response = getAllResponses("230", read.readLine());
 		//System.out.println(response);
 
 		if (!response.startsWith("230 ")) {
@@ -101,7 +103,6 @@ public class Connector {
 	public synchronized void disconnect() throws IOException {
 		try {
 			if (!server.isConnected()) {
-				cancelNOOPDeamon();
 				throw new IOException("Can't disconnect from server - you haven't connected yet!");
 			}
 			sendLine("QUIT");
@@ -185,30 +186,7 @@ public class Connector {
 	}
 
 
-	/**
-	 * Sends a raw command to the FTP server.
-	 * 
-	 * @param line line that will be send to server
-	 * @throws IOException
-	 */
-	private void sendLine(String line) throws IOException {
-		if (server == null || server.isClosed()) {
-			throw new IOException("There is no connection to any FTP server or you've been inactive for too long. If so, please connect again");
-		}
-		write.write(line + "\r\n");
-		write.flush();
-		if (!line.startsWith("PASS ")) System.out.println(line);
-		/*
-		 * Marnotrawienie zasobów na parê krzy¿yków...
-		 * else {
-			String[] pass = line.split(" ");
-			String passCoded = "";
-			for (int i=0;i<pass[1].length();i++) passCoded+="*";
-			System.out.println("PASS " + passCoded);
-		}*/
-		else System.out.println("PASS *****");
-		if (!line.equals("NOOP")) resetNoopTimer();
-	}
+	
 
 	/**
 	 * @param file file we want to send to the server
@@ -216,9 +194,6 @@ public class Connector {
 	 * @throws IOException
 	 */
 	public synchronized boolean sendFile(File file) throws IOException {
-		if (file.isDirectory()) {
-			throw new IOException("SimpleFTP cannot upload a directory.");
-		}
 		String filename = file.getName();
 		BufferedInputStream input = new BufferedInputStream(new FileInputStream(file));
 		BufferedOutputStream output = null;
@@ -232,9 +207,6 @@ public class Connector {
 	 * @throws IOException
 	 */
 	public synchronized boolean getFile(File file, String filename) throws IOException {
-		if (file.isDirectory()) {
-			throw new IOException("SimpleFTP cannot upload a directory.");
-		}
 		BufferedOutputStream output = new BufferedOutputStream(new FileOutputStream(file));
 		BufferedInputStream input = null;
 		return moveFile(input, output, filename);
@@ -465,14 +437,42 @@ public class Connector {
 		if (getAllResponses("200 ", read.readLine()).startsWith("200 ")) return true;
 		else return false;
 	}
+	
+	/**
+	 * Sends a raw command to the FTP server.
+	 * 
+	 * @param line line that will be send to server
+	 * @throws IOException
+	 */
+	private void sendLine(String line) throws IOException {
+		if (server == null || server.isClosed()) {
+			throw new IOException("There is no connection to any FTP server or you've been inactive for too long. If so, please connect again");
+		}
+		write.write(line + "\r\n");
+		write.flush();
+		if (!line.startsWith("PASS ")) System.out.println(line);
+		/*
+		 * Marnotrawienie zasobï¿½w na parï¿½ krzyï¿½ykï¿½w...
+		 * else {
+			String[] pass = line.split(" ");
+			String passCoded = "";
+			for (int i=0;i<pass[1].length();i++) passCoded+="*";
+			System.out.println("PASS " + passCoded);
+		}*/
+		else System.out.println("PASS *****");
+		//System.out.flush();
+		if (!line.equals("NOOP")) resetNoopTimer();
+	}
 
 	private String getAllResponses(String code, String response) throws IOException {
 		String r = response;
 		while (r.startsWith(code + "-")) {
 			System.out.println(r);
+			System.out.flush();
 			r=read.readLine();
 		}
 		System.out.println(r);
+		System.out.flush();
 		return r;
 	}
 	

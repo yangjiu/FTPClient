@@ -6,6 +6,7 @@ package view;
 import java.awt.Dimension;
 import java.awt.EventQueue;
 import java.awt.Frame;
+import java.awt.MouseInfo;
 import java.awt.Point;
 
 import client.*;
@@ -22,20 +23,43 @@ import javax.swing.JPasswordField;
 import javax.swing.JButton;
 import javax.swing.ListSelectionModel;
 import javax.swing.SwingUtilities;
+import javax.swing.SwingWorker;
 
+import java.awt.datatransfer.DataFlavor;
+import java.awt.dnd.DnDConstants;
+import java.awt.dnd.DragGestureEvent;
+import java.awt.dnd.DragGestureListener;
+import java.awt.dnd.DragGestureRecognizer;
+import java.awt.dnd.DragSource;
+import java.awt.dnd.DropTarget;
+import java.awt.dnd.DropTargetDropEvent;
 import java.awt.event.ActionListener;
 import java.awt.event.ActionEvent;
+import java.awt.event.KeyAdapter;
+import java.awt.event.KeyEvent;
 import java.io.File;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.OutputStream;
+import java.io.PipedInputStream;
+import java.io.PipedOutputStream;
 import java.io.PrintStream;
+import java.io.PrintWriter;
 import java.net.UnknownHostException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
+import java.util.List;
+import java.util.Scanner;
 
 import javax.swing.JTextArea;
 import javax.swing.JScrollPane;
 import javax.swing.event.ListSelectionEvent;
 import javax.swing.event.ListSelectionListener;
+import javax.swing.event.PopupMenuEvent;
+import javax.swing.event.PopupMenuListener;
 import javax.swing.table.TableColumn;
 import javax.swing.JTable;
 
@@ -44,6 +68,7 @@ import java.awt.event.MouseEvent;
 import java.beans.ExceptionListener;
 
 import javax.swing.BoxLayout;
+import javax.xml.ws.handler.MessageContext;
 
 /**
  * @author Jakub Fortunka
@@ -81,8 +106,13 @@ public class ClientMainFrame {
 	private ArrayList<FTPFile> ftpFiles = null;
 	private String ftpPath;
 	private JTextField textPort;
-	
-	private Thread.UncaughtExceptionHandler h;
+
+	private DragSource ds = new DragSource();
+
+	private boolean dragLocal = false;
+	private boolean dragFtp = false;
+
+	//private Thread.UncaughtExceptionHandler h;
 
 	/**
 	 * Launch the application.
@@ -151,10 +181,10 @@ public class ClientMainFrame {
 				connect();
 			}
 		});
-		
+
 		JLabel lblportLabel = new JLabel("Port");
 		menu.add(lblportLabel);
-		
+
 		textPort = new JTextField();
 		textPort.setText("21");
 		menu.add(textPort);
@@ -196,15 +226,10 @@ public class ClientMainFrame {
 					localDoubleClick(e);
 				}
 			}
-
-			@Override
-			public void mousePressed(MouseEvent event) {
-				// selects the row at which point the mouse is clicked
-				Point point = event.getPoint();
-				int currentRow = localTable.rowAtPoint(point);
-				localTable.setRowSelectionInterval(currentRow, currentRow);
-			}
 		});
+
+
+
 		localTable.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
 		localTable.setAutoCreateRowSorter(true);
 		localTable.setShowVerticalLines(false);
@@ -214,17 +239,84 @@ public class ClientMainFrame {
 		localView.add(localTableScroll);
 
 		localPopupMenu = new LocalPopupMenu(this);
+
+		localPopupMenu.addPopupMenuListener(new PopupMenuListener() {
+			@Override
+			public void popupMenuWillBecomeVisible(PopupMenuEvent e) {
+				if (localPopupMenu.isMouseOnTable()) {
+					Point point = localTable.getMousePosition();
+					int currentRow = localTable.rowAtPoint(point);
+					localTable.setRowSelectionInterval(currentRow, currentRow);
+				}
+			}
+			@Override
+			public void popupMenuWillBecomeInvisible(PopupMenuEvent e) {
+			}
+
+			@Override
+			public void popupMenuCanceled(PopupMenuEvent e) {
+			}
+		});
+
 		localTableScroll.setComponentPopupMenu(localPopupMenu);
 		localTable.setComponentPopupMenu(localPopupMenu);
 		JPanel FTPView = new JPanel();
 		mainPanel.add(FTPView);
 		FTPView.setLayout(new BorderLayout(0,0));
-		
+
+		localTable.setDropTarget(new DropTarget(){
+			@Override
+			public synchronized void drop(DropTargetDropEvent e) {
+				//Point point = e.getLocation();
+				//	Point overallPoint = e.getLocation();
+				Point point = localTable.getMousePosition();
+				int row = localTable.rowAtPoint(point);
+				//System.out.println(localTable.getValueAt(localRow, 1));
+				// Have to be row-1, because i'm adding ".." at the beginning of table
+				if (row==0) throwException(new IOException("Can't move file to that folder!"));
+				else {
+					if (dragFtp) {
+						getFileFromDrop(row);
+					}
+					else {
+						// sprawdzić czy przenosimy do folderu!
+						String filename = (String) localTable.getValueAt(localTable.getSelectedRow(), 1);
+						Path oldPath = Paths.get(fileRoot + File.separator + filename);
+						Path newPath = Paths.get(fileRoot + File.separator + localTable.getValueAt(row, 1) + File.separator + filename);
+						try {
+							Files.move(oldPath, newPath, StandardCopyOption.REPLACE_EXISTING);
+						} catch (IOException e1) {
+							throwException(e1);
+						}
+						refreshCurrentDirectory();
+					}
+				}
+				clearDragState();
+				super.drop(e);
+			}
+		});
+
+		localTableScroll.setDropTarget(new DropTarget(){
+			@Override
+			public synchronized void drop(DropTargetDropEvent e) {
+				if (dragFtp) {
+					getFileFromDrop(-1);
+				}
+				clearDragState();
+				super.drop(e);
+			}
+		});
+
+		localTable.setDragEnabled(true);
+
+		//localTable.getdr
+
+
 		//localTable.setDragEnabled(true);
-		
+
 
 		/* FTP Table */
-		
+
 		ftpTable = new JTable();
 		ftpTable.addMouseListener(new MouseAdapter() {
 			@Override
@@ -233,21 +325,9 @@ public class ClientMainFrame {
 					try {
 						ftpDoubleClick(e);
 					} catch (IOException e1) {
-						JOptionPane.showMessageDialog(frmFtpClient,
-								e1.getMessage(),
-								"Problem!",
-								JOptionPane.WARNING_MESSAGE);
-						return ;
+						throwException(e1);
 					}
 				}
-			}
-
-			@Override
-			public void mousePressed(MouseEvent event) {
-				// selects the row at which point the mouse is clicked
-				Point point = event.getPoint();
-				int currentRow = ftpTable.rowAtPoint(point);
-				ftpTable.setRowSelectionInterval(currentRow, currentRow);
 			}
 		});
 		ftpTable.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
@@ -263,11 +343,29 @@ public class ClientMainFrame {
 		ftpTableScroll.setComponentPopupMenu(ftpPopupMenu);
 		ftpTable.setComponentPopupMenu(ftpPopupMenu);
 
+		ftpPopupMenu.addPopupMenuListener(new PopupMenuListener() {
+			@Override
+			public void popupMenuWillBecomeVisible(PopupMenuEvent e) {
+				if (ftpPopupMenu.isMouseOnTable()) {
+					Point point = ftpTable.getMousePosition();
+					int currentRow = ftpTable.rowAtPoint(point);
+					ftpTable.setRowSelectionInterval(currentRow, currentRow);
+				}
+			}
+			@Override
+			public void popupMenuWillBecomeInvisible(PopupMenuEvent e) {
+			}
+
+			@Override
+			public void popupMenuCanceled(PopupMenuEvent e) {
+			}
+		});
+
 		fileRoot = new File(System.getProperty("user.dir"));
 		//fileRoot = new File("C:/");
-		File[] subItems = fileRoot.listFiles();
+		subItems = fileRoot.listFiles();
 		setTableData(subItems);
-		
+
 		//ftpTable.setDragEnabled(true);
 
 		listSelectionListener = new ListSelectionListener() {
@@ -284,32 +382,91 @@ public class ClientMainFrame {
 			}
 		};
 
+		ftpTable.setDropTarget(new DropTarget() {
+			@Override
+			public synchronized void drop(DropTargetDropEvent e) {
+				// handle drop outside current table (e.g. add row)
+				if (dragLocal) {
+					sendFileFromDrop();
+				}
+				else {
+					//użyć changeRemoteFilename
+					
+				}
+				clearDragState();
+			}
+		});
+
+		ftpTableScroll.setDropTarget(new DropTarget() {
+			@Override
+			public synchronized void drop(DropTargetDropEvent e) {
+				if (dragLocal) {
+					sendFileFromDrop();
+				}
+				clearDragState();
+				super.drop(e);
+			}
+		});
+
+		ftpTable.setDragEnabled(true);
+
 		/*Text Area*/
 		JTextArea textArea = new JTextArea();
 		//frmFtpClient.getContentPane().add(textArea, BorderLayout.SOUTH);
 		output = textArea;
 
 		textArea.setRows(10);
-		JScrollPane scrollPane = new JScrollPane(textArea);
 
+		JScrollPane scrollPane = new JScrollPane(output);
 		frmFtpClient.getContentPane().add(scrollPane, BorderLayout.SOUTH);
 
 		redirectSystemStreams();	
-		
-		frmFtpClient.setExtendedState(Frame.MAXIMIZED_BOTH); 
-		
-		h = new Thread.UncaughtExceptionHandler() {
-		    public void uncaughtException(Thread th, Throwable ex) {
-		        System.out.println("Uncaught exception: " + ex);
-		    }
-		};
 
+		frmFtpClient.setExtendedState(Frame.MAXIMIZED_BOTH); 
+
+		/*h = new Thread.UncaughtExceptionHandler() {
+			public void uncaughtException(Thread th, Throwable ex) {
+				System.out.println("Uncaught exception: " + ex);
+			}
+		};*/
+
+
+		/* try {
+	    	PipedInputStream outPipe = new PipedInputStream();
+	    	//PipedInputStream errOut = new PipedInputStream();
+			System.setOut(new PrintStream(new PipedOutputStream(outPipe), true));
+			//System.setErr(new PrintStream(new PipedOutputStream(outPipe), true));
+			redirectStream(outPipe);
+			//output.setRows(10);
+
+		} catch (IOException e1) {
+			redirectSystemStreams();
+			e1.printStackTrace();
+
+		}*/
+
+		DragGestureRecognizer locaDraggin = ds.createDefaultDragGestureRecognizer(localTable, DnDConstants.ACTION_COPY_OR_MOVE, new DragGestureListener() {
+			public void dragGestureRecognized(DragGestureEvent e) {
+				dragLocal=true;
+			} 
+		});
+		DragGestureRecognizer ftpDragging = ds.createDefaultDragGestureRecognizer(ftpTable, DnDConstants.ACTION_COPY_OR_MOVE, new DragGestureListener() {
+			public void dragGestureRecognized(DragGestureEvent e) {
+				dragFtp=true;
+			}
+		});
+	}
+
+	private void clearDragState() {
+		dragLocal=false;
+		dragFtp=false;
 	}
 
 	private void connect() {
 		try {
 			Connector c = new Connector(textHost.getText(), Integer.parseInt(textPort.getText()), textLogin.getText(), String.copyValueOf(passwordField.getPassword()));
 			connection = c;
+			//connection.connectToServer(textHost.getText(), Integer.parseInt(textPort.getText()), textLogin.getText(), String.copyValueOf(passwordField.getPassword()));
 			ftpPath = connection.pwd();
 			ftpFiles = connection.list();
 			setFtpTableData(ftpFiles);
@@ -322,13 +479,36 @@ public class ClientMainFrame {
 		}
 	}
 
+	/*public void redirectStream (final InputStream out) {
+
+	   // final JTextArea area = new JTextArea();
+
+
+
+	    // handle "System.out"
+	    new SwingWorker<Void, String>() {
+	        @Override protected Void doInBackground() throws Exception {
+	            Scanner s = new Scanner(out);
+	            while (s.hasNextLine()) //publish(s.nextLine() + "\n");
+	            	output.append(s.nextLine());
+	            return null;
+	        }
+	        @Override protected void process(List<String> chunks) {
+	            for (String line : chunks) output.append(line);
+	        }
+	    }.execute();
+
+	  //  return area;
+	}*/
+
 	private void updateTextArea(final String text) {
 		SwingUtilities.invokeLater(new Runnable() {
 			public void run() {
 				output.append(text);
-				output.setCaretPosition(output.getDocument().getLength());
-				
-				output.repaint();
+				//output.
+				//output.setCaretPosition(output.getDocument().getLength());
+
+				//output.repaint();
 			}
 		});
 	}
@@ -355,21 +535,31 @@ public class ClientMainFrame {
 			}
 		};
 
+		//PrintStream p = new PrintStream(out, true);
+		//System.setOut(p);
 		System.setOut(new PrintStream(out, true));
 		System.setErr(new PrintStream(out, true));
 	}
 
 	/** Update the table on the EDT */
 	private void setTableData(final File[] files) {
+		/*File newFile = new File("..");
+		File[] test = new File[files.length + 1];
+		test[0]=newFile;
+		int i=1;
+		for (File f : files) {
+			test[i] = f;
+			i++;
+		}*/
 		setDataInTable(files, null);
 	}
-	
-	
+
+
 
 	private void setFtpTableData(final ArrayList<FTPFile> files) {
 		setDataInTable(null, files);
 	}
-	
+
 	private void setDataInTable(final File[] files, final ArrayList<FTPFile> ftpFiles) {
 		SwingUtilities.invokeLater(new Runnable() {
 			public void run() {
@@ -591,7 +781,7 @@ public class ClientMainFrame {
 		}
 	}
 
-	public void changeRemoteName(String oldFilename, String newFilename) {
+	public void changeRemoteFilename(String oldFilename, String newFilename) {
 		try {
 			connection.changeName(oldFilename, newFilename);
 			refreshFTPDirectory();
@@ -607,6 +797,29 @@ public class ClientMainFrame {
 		} catch (IOException e) {
 			throwException(e);
 		}
+	}
+	
+	private void getFileFromDrop(int rowOfLocalTable) {
+		int row = ftpTable.getSelectedRow();
+		File fileToGet = null;
+		String filename = (String) ftpTable.getValueAt(row, 1);
+		if (rowOfLocalTable != -1) {
+			String fileDragOn =(String) localTable.getValueAt(rowOfLocalTable, 1);
+			File maybeDir = new File(fileDragOn);
+			if (maybeDir.isDirectory()) 
+				fileToGet = new File(fileRoot + File.separator + fileDragOn + File.separator + filename);
+		}
+		if (fileToGet == null) fileToGet = new File(fileRoot + File.separator + filename);
+		if (ftpFiles.get(row).isDirectory()) getDirectory(fileToGet, filename);
+		else getFile(fileToGet, filename);
+	}
+	
+	private void sendFileFromDrop() {
+		int row = localTable.getSelectedRow();
+		String filename = (String) localTable.getValueAt(row, 1);
+		File fileToServer = new File(fileRoot + File.separator + filename);
+		if (fileToServer.isDirectory()) sendDirectory(fileToServer);
+		else sendFile(fileToServer);
 	}
 
 	public void refreshCurrentDirectory() {
@@ -649,7 +862,7 @@ public class ClientMainFrame {
 	}
 
 	private void throwException(Exception e) {
-		if (connection != null) connection.cancelNOOPDeamon();
+		//	if (connection != null) connection.cancelNOOPDeamon();
 		JOptionPane.showMessageDialog(frmFtpClient,
 				e.getMessage(),
 				"Problem!",

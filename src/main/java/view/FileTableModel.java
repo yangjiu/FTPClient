@@ -50,27 +50,35 @@ class FileTableModel extends AbstractTableModel {
             case 1:
             	if (row==0) return "..";
             	else return fileSystemView.getSystemDisplayName(file);
+            //	return fileSystemView.getSystemDisplayName(file);
             case 2:
             	if (row==0) return null;
             	else return file.length();
+            //	return file.length();
             case 3:
             	if (row==0) return null;
             	else return file.lastModified();
+            //	return file.lastModified();
             case 4:
             	if (row==0) return null;
             	else return file.canRead();
+            //	return file.canRead();
             case 5:
             	if (row==0) return null;
             	else return file.canWrite();
+            //	return file.canWrite();
             case 6:
             	if (row==0) return null;
             	else return file.canExecute();
+            //	return file.canExecute();
             case 7:
             	if (row==0) return null;
             	else return file.isDirectory();
+            //	return file.isDirectory();
             case 8:
             	if (row==0) return null;
             	else return file.isFile();
+            //	return file.isFile();
             default:
                 System.err.println("Logic Error");
         }
@@ -108,8 +116,9 @@ class FileTableModel extends AbstractTableModel {
     }
 
     public File getFile(int row) {
-    	if (row<1)	return files[row-1];
+    	if (row>1)	return files[row-1];
     	return emptyFile;
+    //	return files[row];
     }
 
     public void setFiles(File[] files) {

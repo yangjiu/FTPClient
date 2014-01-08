@@ -7,6 +7,8 @@ import javax.swing.JOptionPane;
 import javax.swing.JPopupMenu;
 import javax.swing.JMenuItem;
 import javax.swing.JScrollPane;
+import javax.swing.JTable;
+
 import java.awt.event.ActionListener;
 import java.awt.event.ActionEvent;
 import java.io.File;
@@ -121,6 +123,26 @@ public class LocalPopupMenu extends JPopupMenu {
 		}			
 	}
 	
+	public void setVisible2(boolean b, int x, int y) {
+		super.setLocation(x, y);
+		super.setVisible(b);
+		if (this.getInvoker() instanceof JScrollPane) {
+			mntmChangeName.setEnabled(false);
+			mntmDelete.setEnabled(false);
+			mntmSendFile.setEnabled(false);
+		}
+		else if (view.getLocalTable().getValueAt(view.getLocalTable().getSelectedRow(), 1).equals("..")) {
+			mntmChangeName.setEnabled(false);
+			mntmDelete.setEnabled(false);
+			mntmSendFile.setEnabled(false);
+		}
+		else {
+			mntmChangeName.setEnabled(true);
+			mntmDelete.setEnabled(true);
+			mntmSendFile.setEnabled(true);
+		}
+	}
+	
 	
 	private void send() throws IOException {
 		int row = view.getLocalTable().getSelectedRow();
@@ -174,8 +196,6 @@ public class LocalPopupMenu extends JPopupMenu {
 		view.refreshCurrentDirectory();
 		
 	}
-	
-	
 
 	private void throwException(Exception e) {
 		JOptionPane.showMessageDialog(view.getFrame(),
@@ -183,5 +203,10 @@ public class LocalPopupMenu extends JPopupMenu {
 				"Problem!",
 				JOptionPane.WARNING_MESSAGE);
 		return ;
+	}
+	
+	public boolean isMouseOnTable() {
+		if (this.getInvoker() instanceof JTable) return true;
+		else return false;
 	}
 }

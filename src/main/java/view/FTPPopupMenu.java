@@ -9,6 +9,7 @@ import javax.swing.JMenuItem;
 import javax.swing.JScrollPane;
 import javax.swing.JTable;
 
+import client.Client;
 import client.FTPFile;
 
 import java.awt.event.ActionListener;
@@ -26,18 +27,18 @@ public class FTPPopupMenu extends JPopupMenu {
 	 * 
 	 */
 	private static final long serialVersionUID = -7831472688804082458L;
-	
+
 	private JMenuItem mntmGetFile;
 	private JMenuItem mntmMakeFile;
 	private JMenuItem mntmMakeDirectory;
 	private JMenuItem mntmDelete;
 	private JMenuItem mntmChangeName;
 	private JMenuItem mntmChangeRights;
-	
+
 	RightsDialog dialog = null ;
-	
+
 	private ClientMainFrame view=null;
-	
+
 	/**
 	 * @param view
 	 */
@@ -54,7 +55,7 @@ public class FTPPopupMenu extends JPopupMenu {
 			}
 		});
 		add(mntmGetFile);
-		
+
 		mntmMakeFile = new JMenuItem("Make File");
 		mntmMakeFile.addActionListener(new ActionListener() {
 			public void actionPerformed(ActionEvent arg0) {
@@ -62,7 +63,7 @@ public class FTPPopupMenu extends JPopupMenu {
 			}
 		});
 		add(mntmMakeFile);
-		
+
 		mntmMakeDirectory = new JMenuItem("Make Directory");
 		mntmMakeDirectory.addActionListener(new ActionListener() {
 			public void actionPerformed(ActionEvent arg0) {
@@ -70,7 +71,7 @@ public class FTPPopupMenu extends JPopupMenu {
 			}
 		});
 		add(mntmMakeDirectory);
-		
+
 		mntmDelete = new JMenuItem("Delete");
 		mntmDelete.addActionListener(new ActionListener() {
 			public void actionPerformed(ActionEvent arg0) {
@@ -78,7 +79,7 @@ public class FTPPopupMenu extends JPopupMenu {
 			}
 		});
 		add(mntmDelete);
-		
+
 		mntmChangeName = new JMenuItem("Change name");
 		mntmChangeName.addActionListener(new ActionListener() {
 			public void actionPerformed(ActionEvent arg0) {
@@ -86,7 +87,7 @@ public class FTPPopupMenu extends JPopupMenu {
 			}
 		});
 		add(mntmChangeName);
-		
+
 		mntmChangeRights = new JMenuItem("Change rights");
 		mntmChangeRights.addActionListener(new ActionListener() {
 			public void actionPerformed(ActionEvent arg0) {
@@ -99,7 +100,7 @@ public class FTPPopupMenu extends JPopupMenu {
 		});
 		add(mntmChangeRights);
 	}
-	
+
 	@Override
 	public void setVisible(boolean b) {
 		super.setVisible(b);
@@ -113,18 +114,15 @@ public class FTPPopupMenu extends JPopupMenu {
 			setMenuItems(true);
 		}			
 	}
-	
+
 	private void setMenuItems(boolean isClickable) {
 		mntmChangeName.setEnabled(isClickable);
 		mntmDelete.setEnabled(isClickable);
 		mntmGetFile.setEnabled(isClickable);
 		mntmChangeRights.setEnabled(isClickable);
 	}
-	
+
 	private void getFile() throws IOException {
-		if (view.getConnector() == null) {
-			throw new IOException("First you must connect to the FTP Server!");
-		}
 		int row = view.getFTPTable().getSelectedRow();
 		String filename = (String) view.getFTPTable().getValueAt(row, 1);
 		boolean isDirectory = false;
@@ -135,34 +133,37 @@ public class FTPPopupMenu extends JPopupMenu {
 		}
 		String localPath = view.getFileroot().getAbsolutePath() + File.separator + filename;
 		File fileToGet = new File(localPath);
-		if (!isDirectory) view.getFile(fileToGet, filename);
-		else view.getDirectory(fileToGet, filename);
+		view.getFileOrDirectory(fileToGet, filename, isDirectory);
 	}
-	
-	
+
+
 	private void makeFile() {
 		mk(false);
 		//System.out.println("Test");
-		
+
 	}
-	
+
 	private void makeDirectory() {
 		mk(true);
 	}
-	
+
 	private void mk(boolean createDirectory) {
 		String filename = JOptionPane.showInputDialog("Enter a name");
-		//String path = view.getFileroot().getAbsolutePath() + File.separator;
-		if (createDirectory) view.createRemoteDirectory(filename);
-		else view.createRemoteFile(filename);
+		view.createFileOrDirectoryOnServer(filename, createDirectory);
 	}
-	
+
 	private void delete() {
 		int row = view.getFTPTable().getSelectedRow();
 		String filename = (String) view.getFTPTable().getValueAt(row, 1);
-		view.deleteRemoteFile(filename,row);
+		boolean isDirectory = false;
+		for (FTPFile f : view.getFTPFiles()) {
+			if (f.getFilename().equals(filename)) if (f.isDirectory()) isDirectory=true;
+		}
+		if (isDirectory) isDirectory=true;
+		else isDirectory=false;
+		view.deleteFileOrDirectoryFromServer(filename, isDirectory);
 	}
-	
+
 	private void changeName() {
 		String newFilename = JOptionPane.showInputDialog("Enter a name");
 		int row = view.getFTPTable().getSelectedRow();
@@ -170,9 +171,9 @@ public class FTPPopupMenu extends JPopupMenu {
 		String extension = "";
 		if (oldFilename.contains(".")) extension = oldFilename.substring(oldFilename.lastIndexOf("."));
 		newFilename+=extension;
-		view.changeRemoteFilename(oldFilename, newFilename);
+		view.changeNameOnServer(oldFilename, newFilename);
 	}
-	
+
 	private void changeRigths() throws IOException {
 		int row = view.getFTPTable().getSelectedRow();
 		FTPFile f = view.getFTPFiles().get(row);
@@ -188,7 +189,7 @@ public class FTPPopupMenu extends JPopupMenu {
 		String rights = dialog.getRights();
 		if (!rights.equals("-1")) view.changeRights(f.getFilename(), rights);
 	}
-	
+
 	private void throwException(Exception e) {
 		JOptionPane.showMessageDialog(view.getFrame(),
 				e.getMessage(),
@@ -196,7 +197,7 @@ public class FTPPopupMenu extends JPopupMenu {
 				JOptionPane.WARNING_MESSAGE);
 		return ;
 	}
-	
+
 	public boolean isMouseOnTable() {
 		if (this.getInvoker() instanceof JTable) return true;
 		else return false;

@@ -11,6 +11,7 @@ import java.awt.Point;
 
 import client.*;
 
+import javax.security.auth.callback.TextOutputCallback;
 import javax.swing.JFrame;
 
 import java.awt.BorderLayout;
@@ -76,12 +77,15 @@ import javax.xml.ws.handler.MessageContext;
  */
 public class ClientMainFrame {
 
-	private Connector connection = null;
+	private Client serverConnect = null;
+
 	private JFrame frmFtpClient;
+
 	private JTextField textLogin;
 	private JPasswordField passwordField;
 	private JTextField textHost;
 	private JTextArea output;
+	private JTextField textPort;
 
 	private LocalPopupMenu localPopupMenu;
 	private FTPPopupMenu ftpPopupMenu;
@@ -105,12 +109,10 @@ public class ClientMainFrame {
 
 	private ArrayList<FTPFile> ftpFiles = null;
 	private String ftpPath;
-	private JTextField textPort;
 
 	private DragSource ds = new DragSource();
 
-	private boolean dragLocal = false;
-	private boolean dragFtp = false;
+	private boolean dragLocal;
 
 	//private Thread.UncaughtExceptionHandler h;
 
@@ -147,6 +149,8 @@ public class ClientMainFrame {
 		frmFtpClient.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
 		frmFtpClient.getContentPane().setLayout(new BorderLayout(4, 4));
 
+		serverConnect = new Client();
+
 		JPanel menu = new JPanel();
 		frmFtpClient.getContentPane().add(menu, BorderLayout.NORTH);
 
@@ -178,7 +182,14 @@ public class ClientMainFrame {
 		JButton btnConnect = new JButton("Connect");
 		btnConnect.addActionListener(new ActionListener() {
 			public void actionPerformed(ActionEvent arg0) {
-				connect();
+				try {
+					serverConnect.connectToServer(textLogin.getText(), String.copyValueOf(passwordField.getPassword()), textHost.getText(), Integer.parseInt(textPort.getText()));
+					ftpPath = serverConnect.pwd();
+					ftpFiles = serverConnect.list();
+					setFtpTableData(ftpFiles);
+				} catch (NumberFormatException | IOException e) {
+					throwException(e);
+				}
 			}
 		});
 
@@ -190,20 +201,15 @@ public class ClientMainFrame {
 		menu.add(textPort);
 		textPort.setColumns(10);
 		menu.add(btnConnect);
-
 		JButton btnDisconnect = new JButton("Disconnect");
 		btnDisconnect.addActionListener(new ActionListener() {
 			public void actionPerformed(ActionEvent arg0) {
 				try {
-					if (connection == null) throw new IOException("You haven't connected yet!");
-					connection.disconnect();
+					if (!serverConnect.isConnected()) throw new IOException("You haven't connected yet!");
+					serverConnect.disconnectFromServer();
 					clearFTPFileList();
 				} catch (IOException e) {
-					JOptionPane.showMessageDialog(frmFtpClient,
-							e.getMessage(),
-							"Unknown Host!",
-							JOptionPane.WARNING_MESSAGE);
-					return ;
+					throwException(e);
 				}
 			}
 		});
@@ -267,28 +273,31 @@ public class ClientMainFrame {
 		localTable.setDropTarget(new DropTarget(){
 			@Override
 			public synchronized void drop(DropTargetDropEvent e) {
-				//Point point = e.getLocation();
-				//	Point overallPoint = e.getLocation();
 				Point point = localTable.getMousePosition();
 				int row = localTable.rowAtPoint(point);
-				//System.out.println(localTable.getValueAt(localRow, 1));
 				// Have to be row-1, because i'm adding ".." at the beginning of table
 				if (row==0) throwException(new IOException("Can't move file to that folder!"));
 				else {
-					if (dragFtp) {
-						getFileFromDrop(row);
-					}
-					else {
-						// sprawdzić czy przenosimy do folderu!
-						String filename = (String) localTable.getValueAt(localTable.getSelectedRow(), 1);
-						Path oldPath = Paths.get(fileRoot + File.separator + filename);
-						Path newPath = Paths.get(fileRoot + File.separator + localTable.getValueAt(row, 1) + File.separator + filename);
+					if (!dragLocal) {
 						try {
-							Files.move(oldPath, newPath, StandardCopyOption.REPLACE_EXISTING);
+							getFileByDrop(row);
 						} catch (IOException e1) {
 							throwException(e1);
 						}
-						refreshCurrentDirectory();
+					}
+					else {
+						File maybeDir = new File((String)localTable.getValueAt(row, 1));
+						if (maybeDir.isDirectory()) {
+							String filename = (String) localTable.getValueAt(localTable.getSelectedRow(), 1);
+							Path oldPath = Paths.get(fileRoot + File.separator + filename);
+							Path newPath = Paths.get(fileRoot + File.separator + localTable.getValueAt(row, 1) + File.separator + filename);
+							try {
+								Files.move(oldPath, newPath, StandardCopyOption.REPLACE_EXISTING);
+							} catch (IOException e1) {
+								throwException(e1);
+							}
+							refreshCurrentDirectory();
+						}
 					}
 				}
 				clearDragState();
@@ -299,8 +308,12 @@ public class ClientMainFrame {
 		localTableScroll.setDropTarget(new DropTarget(){
 			@Override
 			public synchronized void drop(DropTargetDropEvent e) {
-				if (dragFtp) {
-					getFileFromDrop(-1);
+				if (!dragLocal) {
+					try {
+						getFileByDrop(-1);
+					} catch (IOException e1) {
+						throwException(e1);
+					}
 				}
 				clearDragState();
 				super.drop(e);
@@ -308,12 +321,6 @@ public class ClientMainFrame {
 		});
 
 		localTable.setDragEnabled(true);
-
-		//localTable.getdr
-
-
-		//localTable.setDragEnabled(true);
-
 
 		/* FTP Table */
 
@@ -385,23 +392,44 @@ public class ClientMainFrame {
 		ftpTable.setDropTarget(new DropTarget() {
 			@Override
 			public synchronized void drop(DropTargetDropEvent e) {
-				// handle drop outside current table (e.g. add row)
+				Point point = ftpTable.getMousePosition();
+				int row = ftpTable.rowAtPoint(point);
 				if (dragLocal) {
-					sendFileFromDrop();
+					try {
+						sendFileByDrop(row);
+					} catch (IOException e1) {
+						throwException(e1);
+					}
 				}
 				else {
 					//użyć changeRemoteFilename
-					
+					String maybeDir = (String)ftpTable.getValueAt(row, 1);
+					boolean isDirectory = false;
+					for (FTPFile f : ftpFiles) {
+						if (f.getFilename().equals(maybeDir) && f.isDirectory()) isDirectory=true;
+					}
+					if (isDirectory) {
+						String filename = (String) ftpTable.getValueAt(ftpTable.getSelectedRow(), 1);
+						try {
+							serverConnect.changeRemoteFilename(filename, maybeDir + "/" + filename);
+							refreshFTPDirectory();
+						} catch (IOException e1) {
+							throwException(e1);
+						}
+					}
+					clearDragState();
 				}
-				clearDragState();
-			}
-		});
+			}});
 
 		ftpTableScroll.setDropTarget(new DropTarget() {
 			@Override
 			public synchronized void drop(DropTargetDropEvent e) {
 				if (dragLocal) {
-					sendFileFromDrop();
+					try {
+						sendFileByDrop(-1);
+					} catch (IOException e1) {
+						throwException(e1);
+					}
 				}
 				clearDragState();
 				super.drop(e);
@@ -412,7 +440,6 @@ public class ClientMainFrame {
 
 		/*Text Area*/
 		JTextArea textArea = new JTextArea();
-		//frmFtpClient.getContentPane().add(textArea, BorderLayout.SOUTH);
 		output = textArea;
 
 		textArea.setRows(10);
@@ -445,39 +472,18 @@ public class ClientMainFrame {
 
 		}*/
 
-		DragGestureRecognizer locaDraggin = ds.createDefaultDragGestureRecognizer(localTable, DnDConstants.ACTION_COPY_OR_MOVE, new DragGestureListener() {
+		DragGestureRecognizer localDraggin = ds.createDefaultDragGestureRecognizer(localTable, DnDConstants.ACTION_COPY_OR_MOVE, new DragGestureListener() {
 			public void dragGestureRecognized(DragGestureEvent e) {
 				dragLocal=true;
 			} 
-		});
-		DragGestureRecognizer ftpDragging = ds.createDefaultDragGestureRecognizer(ftpTable, DnDConstants.ACTION_COPY_OR_MOVE, new DragGestureListener() {
-			public void dragGestureRecognized(DragGestureEvent e) {
-				dragFtp=true;
-			}
 		});
 	}
 
 	private void clearDragState() {
 		dragLocal=false;
-		dragFtp=false;
 	}
 
-	private void connect() {
-		try {
-			Connector c = new Connector(textHost.getText(), Integer.parseInt(textPort.getText()), textLogin.getText(), String.copyValueOf(passwordField.getPassword()));
-			connection = c;
-			//connection.connectToServer(textHost.getText(), Integer.parseInt(textPort.getText()), textLogin.getText(), String.copyValueOf(passwordField.getPassword()));
-			ftpPath = connection.pwd();
-			ftpFiles = connection.list();
-			setFtpTableData(ftpFiles);
-		} catch (UnknownHostException e) {
-			throwException(e);
-			//e.printStackTrace();
-		} catch (IOException e) {
-			throwException(e);
-			return ;
-		}
-	}
+
 
 	/*public void redirectStream (final InputStream out) {
 
@@ -505,10 +511,6 @@ public class ClientMainFrame {
 		SwingUtilities.invokeLater(new Runnable() {
 			public void run() {
 				output.append(text);
-				//output.
-				//output.setCaretPosition(output.getDocument().getLength());
-
-				//output.repaint();
 			}
 		});
 	}
@@ -543,18 +545,8 @@ public class ClientMainFrame {
 
 	/** Update the table on the EDT */
 	private void setTableData(final File[] files) {
-		/*File newFile = new File("..");
-		File[] test = new File[files.length + 1];
-		test[0]=newFile;
-		int i=1;
-		for (File f : files) {
-			test[i] = f;
-			i++;
-		}*/
 		setDataInTable(files, null);
 	}
-
-
 
 	private void setFtpTableData(final ArrayList<FTPFile> files) {
 		setDataInTable(null, files);
@@ -651,22 +643,22 @@ public class ClientMainFrame {
 		JTable target = (JTable)e.getSource();
 		int row = target.getSelectedRow();
 		String dirName = (String) ftpTable.getValueAt(row, 1);
-		ftpPath = connection.pwd();
+		ftpPath = serverConnect.pwd();
 		if (dirName.equals("..")) {
 			if (ftpPath.equals("/")) {
-				ftpFiles = connection.list();
+				ftpFiles = serverConnect.list();
 				setFtpTableData(ftpFiles);
 			}
 			else {
 				if (ftpPath.lastIndexOf("/") == 0) {
-					connection.cwd("/");
-					ftpFiles=connection.list();
+					serverConnect.cwd("/");
+					ftpFiles=serverConnect.list();
 					setFtpTableData(ftpFiles);
 				}
 				else {
 					ftpPath = ftpPath.substring(0, ftpPath.lastIndexOf("/"));
-					connection.cwd(ftpPath);
-					ftpFiles = connection.list();
+					serverConnect.cwd(ftpPath);
+					ftpFiles = serverConnect.list();
 					setFtpTableData(ftpFiles);
 				}
 			}
@@ -674,132 +666,13 @@ public class ClientMainFrame {
 		else {
 			if (ftpPath.equals("/")) ftpPath = ftpPath + dirName;
 			else ftpPath = ftpPath + "/" + dirName;
-			connection.cwd(ftpPath);
-			ftpFiles = connection.list();
+			serverConnect.cwd(ftpPath);
+			ftpFiles = serverConnect.list();
 			setFtpTableData(ftpFiles);	
 		}
 	}
 
-	public void sendFile(File fileToServer) {
-		try {
-			boolean sendCompleted = connection.sendFile(fileToServer);
-			if (!sendCompleted) {
-				throw new IOException("There was a problem with sending your file");
-			}
-			refreshFTPDirectory();
-		} catch (IOException e) {
-			throwException(e);
-		}
-
-	}
-
-	public void sendDirectory(File directoryToSend) {
-		try {
-			boolean sendCompleted = connection.sendDirectory(directoryToSend);
-			if (!sendCompleted) {
-				throw new IOException("There was a problem with sending your directory");
-			}
-			refreshFTPDirectory();
-		} catch (IOException e) {
-			throwException(e);
-		}
-
-	}
-
-	public void getFile(File fileToComputer, String remotePath) {
-		try {
-			boolean getCompleted = connection.getFile(fileToComputer, remotePath);
-			if (!getCompleted) {
-				throw new IOException("There was problem with downloading your file");
-			}
-			refreshCurrentDirectory();
-		} catch (IOException e) {
-			throwException(e);
-		}		
-	}
-
-	public void getDirectory(File directoryToGet, String remoteDirectoryname) {
-		try {
-			boolean getCompleted = connection.getDirectory(directoryToGet, remoteDirectoryname);
-			if (!getCompleted) {
-				throw new IOException("There was problem with downloading your directory");
-			}
-			refreshCurrentDirectory();
-		} catch(IOException e) {
-			throwException(e);
-		}
-	}
-
-	public void deleteLocalFile(File fileToDelete) {
-		if (fileToDelete.isDirectory()) {
-			if (fileToDelete.list().length==0) fileToDelete.delete();
-			else {
-				File[] files = fileToDelete.listFiles();
-				for (File f : files) {
-					if (f.isDirectory()) deleteLocalFile(f);
-					else f.delete();
-				}
-				if (fileToDelete.list().length==0) fileToDelete.delete();
-			}
-		}
-		else fileToDelete.delete();
-	}
-
-	public void createRemoteDirectory(String name) {
-		try {
-			boolean getCompleted = connection.makeDirectory(name);
-			if (!getCompleted) {
-				throw new IOException("There was a problem with making a directory");
-			}
-			refreshFTPDirectory();
-		} catch (IOException e) {
-			throwException(e);
-		}
-
-	}
-
-	public void createRemoteFile(String filename) {
-		boolean getCompleted;
-		try {
-			getCompleted = connection.makeFile(filename);
-			if (!getCompleted) {
-				throw new IOException("There was a problem with making a file");
-			}
-			refreshFTPDirectory();
-		} catch (IOException e) {
-			throwException(e);
-		}		
-	}
-
-	public void deleteRemoteFile(String name, int fileIndex) {
-		try {
-			if (ftpFiles.get(fileIndex).isDirectory()) connection.removeDirectory(name);
-			else connection.removeFile(name);
-			refreshFTPDirectory();
-		} catch (IOException e) {
-			throwException(e);
-		}
-	}
-
-	public void changeRemoteFilename(String oldFilename, String newFilename) {
-		try {
-			connection.changeName(oldFilename, newFilename);
-			refreshFTPDirectory();
-		} catch (IOException e) {
-			throwException(e);
-		}
-	}
-
-	public void changeRights(String filename, String rights) {
-		try {
-			connection.changeRights(filename, rights);
-			refreshFTPDirectory();
-		} catch (IOException e) {
-			throwException(e);
-		}
-	}
-	
-	private void getFileFromDrop(int rowOfLocalTable) {
+	private void getFileByDrop(int rowOfLocalTable) throws IOException {
 		int row = ftpTable.getSelectedRow();
 		File fileToGet = null;
 		String filename = (String) ftpTable.getValueAt(row, 1);
@@ -810,16 +683,82 @@ public class ClientMainFrame {
 				fileToGet = new File(fileRoot + File.separator + fileDragOn + File.separator + filename);
 		}
 		if (fileToGet == null) fileToGet = new File(fileRoot + File.separator + filename);
-		if (ftpFiles.get(row).isDirectory()) getDirectory(fileToGet, filename);
-		else getFile(fileToGet, filename);
+		if (ftpFiles.get(row).isDirectory()) serverConnect.getDirectory(fileToGet, filename);
+		else serverConnect.getFile(fileToGet, filename);
+		refreshCurrentDirectory();
 	}
-	
-	private void sendFileFromDrop() {
+
+	private void sendFileByDrop(int rowOfFtpTable) throws IOException {
 		int row = localTable.getSelectedRow();
 		String filename = (String) localTable.getValueAt(row, 1);
 		File fileToServer = new File(fileRoot + File.separator + filename);
-		if (fileToServer.isDirectory()) sendDirectory(fileToServer);
-		else sendFile(fileToServer);
+		if (fileToServer.isDirectory()) serverConnect.sendDirectory(fileToServer);
+		else serverConnect.sendFile(fileToServer);
+		refreshFTPDirectory();
+	}
+
+	public void getFileOrDirectory(File fileToGet, String filename,
+			boolean isDirectory) {
+		try {
+			if (isDirectory) serverConnect.getDirectory(fileToGet,filename);
+			else serverConnect.getFile(fileToGet, filename);
+			refreshCurrentDirectory();
+		} catch (IOException e) {
+			throwException(e);
+		}
+	}
+
+	public void sendToServer(File fileToSend, boolean isDirectory) {
+		try {
+			if (isDirectory) serverConnect.sendDirectory(fileToSend);
+			else serverConnect.sendFile(fileToSend);
+			refreshFTPDirectory();
+		} catch (IOException e) {
+			throwException(e);
+		}
+
+	}
+
+	public void createFileOrDirectoryOnServer(String name,
+			boolean createDirectory) {
+		try {
+			if (createDirectory) serverConnect.createRemoteDirectory(name);
+			else serverConnect.createRemoteFile(name);
+			refreshFTPDirectory();
+		} catch (IOException e) {
+			throwException(e);
+		}
+
+	}
+
+	public void deleteFileOrDirectoryFromServer(String filename,
+			boolean isDirectory) {
+		try {
+			serverConnect.deleteRemoteFile(filename, isDirectory);
+			refreshFTPDirectory();
+		} catch (IOException e) {
+			throwException(e);
+		}
+
+	}
+
+	public void changeNameOnServer(String oldFilename, String newFilename) {
+		try {
+			serverConnect.changeRemoteFilename(oldFilename, newFilename);
+			refreshFTPDirectory();
+		} catch (IOException e) {
+			throwException(e);
+		}
+
+	}
+
+	public void changeRights(String filename, String rights) {
+		try {
+			serverConnect.changeRights(filename, rights);
+			refreshFTPDirectory();
+		} catch (IOException e) {
+			throwException(e);
+		}
 	}
 
 	public void refreshCurrentDirectory() {
@@ -828,17 +767,13 @@ public class ClientMainFrame {
 	}
 
 	public void refreshFTPDirectory() throws IOException {
-		ftpFiles = connection.list();
+		ftpFiles = serverConnect.list();
 		setFtpTableData(ftpFiles);
 	}
 
 	public void clearFTPFileList() {
 		ftpFiles = new ArrayList<FTPFile>();
 		setFtpTableData(ftpFiles);
-	}
-
-	public Connector getConnector() {
-		return connection;
 	}
 
 	public JTable getLocalTable() {

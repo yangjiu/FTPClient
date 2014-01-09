@@ -149,14 +149,13 @@ public class LocalPopupMenu extends JPopupMenu {
 		String filename = (String) view.getLocalTable().getValueAt(row, 1);
 		String path = view.getFileroot().getAbsolutePath() + File.separator;
 		File fileToSend = new File(path + filename);
-		if (fileToSend.isFile()) view.sendFile(fileToSend);
-		else if (fileToSend.isDirectory()) view.sendDirectory(fileToSend);
+		boolean isDirectory = false;
+		if (fileToSend.isDirectory()) isDirectory = true;
+		view.sendToServer(fileToSend, isDirectory);
 	}
 	
 	private void makeFile() throws IOException {
-		mk(false);
-		//System.out.println("Test");
-		
+		mk(false);		
 	}
 	
 	private void makeDirectory() throws IOException {
@@ -177,8 +176,23 @@ public class LocalPopupMenu extends JPopupMenu {
 		String filename = (String) view.getLocalTable().getValueAt(row, 1);
 		String path = view.getFileroot().getAbsolutePath() + File.separator;
 		File fileToDelete = new File(path + filename);
-		view.deleteLocalFile(fileToDelete);
+		deleteLocalFile(fileToDelete);
 		view.refreshCurrentDirectory();
+	}
+	
+	private void deleteLocalFile(File fileToDelete) {
+		if (fileToDelete.isDirectory()) {
+			if (fileToDelete.list().length==0) fileToDelete.delete();
+			else {
+				File[] files = fileToDelete.listFiles();
+				for (File f : files) {
+					if (f.isDirectory()) deleteLocalFile(f);
+					else f.delete();
+				}
+				if (fileToDelete.list().length==0) fileToDelete.delete();
+			}
+		}
+		else fileToDelete.delete();
 	}
 	
 	private void changeName() throws IOException {
@@ -192,9 +206,7 @@ public class LocalPopupMenu extends JPopupMenu {
 		File f = new File (path + oldFilename);
 		if (!f.renameTo(new File(path + newFilename))) {
 			throw new IOException("Can't rename this file (i don't know why...)");
-		}
-		view.refreshCurrentDirectory();
-		
+		}		
 	}
 
 	private void throwException(Exception e) {

@@ -9,7 +9,6 @@ import javax.swing.JMenuItem;
 import javax.swing.JScrollPane;
 import javax.swing.JTable;
 
-import client.Client;
 import client.FTPFile;
 
 import java.awt.event.ActionListener;

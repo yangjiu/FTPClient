@@ -8,18 +8,18 @@ import java.io.BufferedOutputStream;
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileInputStream;
+import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.PrintWriter;
 import java.net.Socket;
 import java.net.UnknownHostException;
+import java.nio.channels.FileChannel;
 import java.util.ArrayList;
 import java.util.StringTokenizer;
-import java.util.Timer;
-import java.util.TimerTask;
 
-import javax.swing.JTextArea;
+import sun.misc.IOUtils;
 
 /**
  * Class that is responsible for connection and functions working with FTP server
@@ -33,8 +33,17 @@ public class Connector {
 	private PrintWriter write = null;
 	private BufferedReader read = null;
 
-	private Timer timer = null;
-	private TimerTask task = null;
+	private Thread.UncaughtExceptionHandler handler;
+
+	private Thread timer = null;
+	private boolean killTimer = false;
+
+	Socket dataSocket = null;
+
+	BufferedInputStream input = null;
+	BufferedOutputStream output = null;
+
+	private boolean usingMyOwnSuperServer = false;
 
 	/**
 	 * @param add name of host
@@ -42,61 +51,53 @@ public class Connector {
 	 * @throws UnknownHostException exception is thrown if passed hostname is invalid
 	 * @throws IOException
 	 */
-	public Connector(String hostName, int port) throws UnknownHostException, IOException {
-		connectToServer(hostName, port);
+	public Connector() throws UnknownHostException, IOException {
 	}
 
-	public Connector(String hostName, int port, String user, String pass) throws UnknownHostException, IOException {
-		connectToServer(hostName, port, user, pass);
+	public Connector(Thread.UncaughtExceptionHandler h) throws UnknownHostException, IOException {
+		handler = h;		
 	}
 
-	private synchronized void connectToServer(String host, int port) throws UnknownHostException, IOException {
-		connectToServer(host,port,"anonymous","anonymous");
+	public synchronized void connectToServer(String host, int port, String user, String pass) throws UnknownHostException, IOException {
+		startConnectingToServer(host, port);
+
+		timer = newTimerThread();
+		timer.start();
+
+		sendUserCommand(user);
+		sendPassCommand(pass);
 	}
 
-	private synchronized void connectToServer(String host, int port, String user, String pass) throws UnknownHostException, IOException {
+	public void startConnectingToServer(String host, int port) throws IOException {
 		server = new Socket(host,port);
 		write = new PrintWriter(server.getOutputStream(), true);
 		read = new BufferedReader(new InputStreamReader(server.getInputStream()));
-
-		timer = new Timer();
-		task = createNewTimerTask();
-		timer.schedule(task, 60*1000);
-		
-		//server.setSoTimeout(1000*2);
-		
 		String response = null;
 		response = getAllResponses("220", read.readLine());
-
-		//System.out.println(read.readLine());
-
 		if (!response.startsWith("220 ")) {
-			cancelNOOPDeamon();
-			throw new IOException(
-					"Unknown response from FTP Server: "
-							+ response);
+			throw new IOException("Unknown response from FTP Server: " + response);
 		}
+	}
 
+	public void sendUserCommand(String user) throws IOException {
 		sendLine("USER " + user);
-
-		response = getAllResponses("331", read.readLine());
-		//System.out.println(response);
-
+		String response = getAllResponses("331", read.readLine());
 		if (!response.startsWith("331 ")) {
-			cancelNOOPDeamon();
-			throw new IOException(
-					"There is a problem with username:  "
-							+ response);
+			if (timer != null) cancelNOOPDeamon();
+			throw new IOException("There is a problem with username:  "	+ response);
 		}
-		//System.out.println("PASS " + pass);
+	}
+
+	public void sendPassCommand(String pass) throws IOException {
 		sendLine("PASS " + pass);
-
-		response = getAllResponses("230", read.readLine());
-		//System.out.println(response);
-
+		String response = getAllResponses("230", read.readLine());
 		if (!response.startsWith("230 ")) {
-			cancelNOOPDeamon();
+			if (timer != null) cancelNOOPDeamon();
 			throw new IOException("There is a problem with password: " + response);
+		}
+		if (timer==null) {
+			timer = newTimerThread();
+			timer.start();
 		}
 	}
 
@@ -107,8 +108,6 @@ public class Connector {
 			}
 			sendLine("QUIT");
 			getAllResponses("221", read.readLine());
-			
-			//System.out.println(read.readLine());
 		} finally {
 			cancelNOOPDeamon();
 			read.close();
@@ -154,27 +153,29 @@ public class Connector {
 	 * @throws IOException
 	 */
 	public synchronized ArrayList<FTPFile> list() throws IOException {
-		Object[] o = pasv();
-		String ip=(String)o[0];
-		int port = (int)o[1];
-		//System.out.println(ip + " " + port);
-		Socket listConnection = new Socket(ip,port);
-		BufferedReader readList = new BufferedReader(new InputStreamReader(listConnection.getInputStream()));
+		//	Object[] o = pasv();
+		//	String ip=(String)o[0];
+		//	int port = (int)o[1];
+		//	dataSocket = new Socket(ip,port);
+		if (!pasv()) throw new IOException("Problem with PASV");
+		return sendListLine();
+	}
+
+	public synchronized ArrayList<FTPFile> sendListLine() throws IOException {
 		sendLine("LIST");
-		String response = read.readLine();
-		response = getAllResponses("150", response);
+		BufferedReader readList = new BufferedReader(new InputStreamReader(dataSocket.getInputStream()));
+		String response = getAllResponses("150", read.readLine());
 		String file = null;
 		ArrayList<FTPFile> files = new ArrayList<FTPFile>();
 		if (response.startsWith("150 ")) {
-			//String test = readList.readLine();
 			while ((file=readList.readLine()) != null) {
 				System.out.println(file);
 				if (!(file.endsWith(".") && file.substring(file.lastIndexOf(".")-1, file.lastIndexOf(".")).equals(" "))) files.add(new FTPFile(file));
 			}
-			listConnection.close();
+			dataSocket.close();
 		}
 		else {
-			listConnection.close();
+			dataSocket.close();
 			throw new IOException("List Problem" + response);
 		}
 		response = read.readLine();
@@ -185,8 +186,47 @@ public class Connector {
 		return files;
 	}
 
+	/**
+	 * @param file file which will be sended to server
+	 * @param isStor true if sending STOR; false if sending APPE
+	 * @return true if everything went well
+	 * @throws IOException
+	 * @throws FileNotFoundException
+	 */
+	public boolean sendStorCommand(File file, boolean isStor) throws IOException, FileNotFoundException {
+		String filename = file.getName();
+		if (isStor) sendLine("STOR " + filename);
+		else sendLine("APPE " + filename);
+		if (!CanMoveFile()) {
+			dataSocket.close();
+			throw new IOException("Can't send/download a file");
+		}
+		input = new BufferedInputStream(new FileInputStream(file));
+		output = new BufferedOutputStream(dataSocket.getOutputStream());
+		boolean status = moveFile();
+		
+	}
 
-	
+	/**
+	 * @param file file in which will be saved file from server
+	 * @param filename name of the file on server (which we want download)
+	 * @return true if everything well as expected
+	 * @throws IOException
+	 */
+	public boolean sendRetrCommand(File file, String filename) throws IOException {
+		sendLine("RETR " + filename);
+		if (!CanMoveFile()) {
+			dataSocket.close();
+			throw new IOException("Can't send/download a file");
+		}
+		input = new BufferedInputStream(dataSocket.getInputStream());
+		output = new BufferedOutputStream(new FileOutputStream(file));
+		return moveFile();
+	}
+
+	public boolean sendAppeCommand(File file) throws FileNotFoundException, IOException {
+		return sendStorCommand(file, false);
+	}
 
 	/**
 	 * @param file file we want to send to the server
@@ -194,10 +234,8 @@ public class Connector {
 	 * @throws IOException
 	 */
 	public synchronized boolean sendFile(File file) throws IOException {
-		String filename = file.getName();
-		BufferedInputStream input = new BufferedInputStream(new FileInputStream(file));
-		BufferedOutputStream output = null;
-		return moveFile(input,output, filename);
+		if (pasv()) return sendStorCommand(file, true);
+		else return false;
 	}
 
 	/**
@@ -207,55 +245,34 @@ public class Connector {
 	 * @throws IOException
 	 */
 	public synchronized boolean getFile(File file, String filename) throws IOException {
-		BufferedOutputStream output = new BufferedOutputStream(new FileOutputStream(file));
-		BufferedInputStream input = null;
-		return moveFile(input, output, filename);
+		if (pasv()) return sendRetrCommand(file, filename);
+		else return false;
 	}
 
-	/**
-	 * Sends a file to be stored on the FTP server. Returns true if the file
-	 * transfer was successful. The file is sent in passive mode to avoid NAT or
-	 * firewall problems at the client end.
-	 */
-	private synchronized boolean moveFile(BufferedInputStream input, BufferedOutputStream output, String filename) throws IOException {		
-		Object[] o = pasv();
-		String ip = (String)o[0];
-		int port = (int)o[1];
-
-		if (output == null) sendLine("STOR " + filename);
-		else sendLine("RETR " + filename);
-
-		Socket dataSocket = new Socket(ip, port);
-
-		String response = getAllResponses("150", read.readLine());
-		if (!response.startsWith ("150 ")) {
-			//if (!response.startsWith("150 ")) {
-			dataSocket.close();
-			//input.close();
-			output.close();
-			input.close();
-			throw new IOException("SimpleFTP was not allowed to send the file: " + response);
-		}
-		if (output == null) output = new BufferedOutputStream(dataSocket.getOutputStream());
-		else input = new BufferedInputStream(dataSocket.getInputStream());
-
-		moveFile(input,output);
-		output.close();
-		input.close();
-		response = read.readLine();
-		response = getAllResponses("226", response);
-
-		dataSocket.close();
-		return response.startsWith("226 ");
-	}
-
-	private void moveFile(BufferedInputStream input, BufferedOutputStream output) throws IOException {
+	private boolean moveFile() throws IOException {
+		//TODO when sending, it deletes file from computer...
 		byte[] buffer = new byte[4096];
 		int bytesRead = 0;
 		while ((bytesRead = input.read(buffer)) != -1) {
 			output.write(buffer, 0, bytesRead);
 		}
 		output.flush();
+		output.close();
+		input.close();
+		dataSocket.close();
+		return transferingFileCompleted();
+	}
+
+	private boolean CanMoveFile() throws IOException {
+		String response = getAllResponses("150", read.readLine());
+		if (!response.startsWith ("150 ")) return false;
+		else return true;
+	}
+
+	private boolean transferingFileCompleted() throws IOException {
+		String response = getAllResponses("226", read.readLine());
+		if (response.startsWith("226 ")) return true;
+		else return false;
 	}
 
 	public synchronized boolean sendDirectory(File directoryToSend) throws IOException {
@@ -320,16 +337,17 @@ public class Connector {
 		return (response.startsWith("200 "));
 	}
 
+
 	/**
-	 * @return array of Object: [0] is String-ip, [1] is int-port
+	 * @return if dataSocket connected to server - true; else - false
 	 * @throws IOException
 	 */
-	public synchronized Object[] pasv() throws IOException {
+	public synchronized boolean pasv() throws IOException {
 		sendLine("PASV");
 		String response = read.readLine();
 		response = getAllResponses("227", response);
 		if (!response.startsWith("227 ")) {
-			throw new IOException("SimpleFTP could not request passive mode: "
+			throw new IOException("Can't access passive mode "
 					+ response);
 		}
 
@@ -346,14 +364,17 @@ public class Connector {
 				port = Integer.parseInt(tokenizer.nextToken()) * 256
 						+ Integer.parseInt(tokenizer.nextToken());
 			} catch (Exception e) {
-				throw new IOException("SimpleFTP received bad data link information: "
+				throw new IOException("Received bad data link connection "
 						+ response);
 			}
 		}
-		Object[] o = new Object[2];
-		o[0]=ip;
-		o[1]=port;
-		return o;
+		dataSocket = new Socket(ip,port);
+		if (dataSocket.isConnected()) return true;
+		else return false;
+		//	Object[] o = new Object[2];
+		//	o[0]=ip;
+		//	o[1]=port;
+		//	return o;
 	}
 
 	public synchronized boolean makeDirectory(String dirpath) throws IOException {
@@ -423,7 +444,9 @@ public class Connector {
 	}
 
 	public synchronized boolean changeRights(String filename, String rights) throws IOException {
-		sendLine("SITE CHMOD " + rights + " " + filename);
+		//TODO
+		if (usingMyOwnSuperServer) sendLine("CHMOD " + filename + " " + rights);
+		else sendLine("SITE CHMOD " + rights + " " + filename);
 		String response = getAllResponses("200", read.readLine());
 		if (!response.startsWith("200 ")) {
 			throw new IOException("There is a problem with changing rights to file/directory " + response);
@@ -432,35 +455,32 @@ public class Connector {
 	}
 
 	public synchronized boolean noop() throws IOException {
-		//if (read.read() == -1) throw new IOException("Server disconnected");
 		sendLine("NOOP");
 		if (getAllResponses("200 ", read.readLine()).startsWith("200 ")) return true;
 		else return false;
 	}
-	
+
+	public synchronized void abort() throws IOException {
+		sendLine("ABOR");
+		output.close();
+		input.close();
+		dataSocket.close();
+	}
+
 	/**
 	 * Sends a raw command to the FTP server.
 	 * 
 	 * @param line line that will be send to server
 	 * @throws IOException
 	 */
-	private void sendLine(String line) throws IOException {
+	private synchronized void sendLine(String line) throws IOException {
 		if (server == null || server.isClosed()) {
 			throw new IOException("There is no connection to any FTP server or you've been inactive for too long. If so, please connect again");
 		}
 		write.write(line + "\r\n");
 		write.flush();
 		if (!line.startsWith("PASS ")) System.out.println(line);
-		/*
-		 * Marnotrawienie zasob�w na par� krzy�yk�w...
-		 * else {
-			String[] pass = line.split(" ");
-			String passCoded = "";
-			for (int i=0;i<pass[1].length();i++) passCoded+="*";
-			System.out.println("PASS " + passCoded);
-		}*/
 		else System.out.println("PASS *****");
-		//System.out.flush();
 		if (!line.equals("NOOP")) resetNoopTimer();
 	}
 
@@ -475,50 +495,40 @@ public class Connector {
 		System.out.flush();
 		return r;
 	}
-	
-	private TimerTask createNewTimerTask() {
-		return new TimerTask() {
-			int noopCounter = 0;
+
+	private synchronized Thread newTimerThread() {
+		return new Thread("Timer-Thread") {
 			@Override
 			public void run() {
-				if (noopCounter==6) {
-					try {
-						disconnect();
-					} catch (IOException e) {
-						e.printStackTrace();
+				try {
+					sleep(1000*30);
+					for (int i=0;i<5;i++) {
+						if (killTimer) return ;
+						noop();
+						sleep(1000*30);
 					}
-				}
-				else {
-					try {
-						if (!noop()) {
-							cancelNOOPDeamon();
-							throw new RuntimeException("Server disconnected");
-						}
-						noopCounter++;
-					} catch (IOException e) {
-						throw new RuntimeException(e.getMessage());
+					disconnect();
+				} catch (InterruptedException e) {
+					if (killTimer) return ;
+					else {
+						timer = newTimerThread();
+						timer.setUncaughtExceptionHandler(handler);
+						timer.start();
 					}
+				} catch (IOException e) {
+					throw new RuntimeException("Server disconnected!");
+				} catch (NullPointerException e) {
+					throw new RuntimeException("Server disconnected!");
 				}
 			}
 		};
 	}
-	
-	private void resetNoopTimer() {
-		timer.cancel();
-		task = createNewTimerTask();
-		timer = new Timer();
-		timer.scheduleAtFixedRate(task, 30*1000, 30*1000);
+	private synchronized void resetNoopTimer() {
+		timer.interrupt();
 	}
-	
-	public void cancelNOOPDeamon() {
-		if (timer != null ) {
-			timer.cancel();
-			timer = null;
-		}
-		if (task != null) {
-			task.cancel();
-			task = null;
-		}
+
+	public synchronized void cancelNOOPDeamon() {
+		killTimer=true;
 	}
 
 }

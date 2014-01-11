@@ -125,24 +125,8 @@ public class LocalPopupMenu extends JPopupMenu {
 	
 	public void setVisible2(boolean b, int x, int y) {
 		super.setLocation(x, y);
-		super.setVisible(b);
-		if (this.getInvoker() instanceof JScrollPane) {
-			mntmChangeName.setEnabled(false);
-			mntmDelete.setEnabled(false);
-			mntmSendFile.setEnabled(false);
-		}
-		else if (view.getLocalTable().getValueAt(view.getLocalTable().getSelectedRow(), 1).equals("..")) {
-			mntmChangeName.setEnabled(false);
-			mntmDelete.setEnabled(false);
-			mntmSendFile.setEnabled(false);
-		}
-		else {
-			mntmChangeName.setEnabled(true);
-			mntmDelete.setEnabled(true);
-			mntmSendFile.setEnabled(true);
-		}
+		this.setVisible(b);
 	}
-	
 	
 	private void send() throws IOException {
 		int row = view.getLocalTable().getSelectedRow();

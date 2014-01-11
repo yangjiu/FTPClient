@@ -9,18 +9,51 @@ package client;
  */
 public class FTPFile {
 
+	/**
+	 * true if file is directory
+	 */
 	private boolean isDirectory=false;
+	/**
+	 * stores rights of file (not processed, so it looks like: '-rwxr-xr-x')
+	 */
 	private String rights;
+	/**
+	 * name of file
+	 */
 	private String filename;
+	/**
+	 * name of owner
+	 */
 	private String owner;
+	/**
+	 * name of group
+	 */
 	private String group;
+	/**
+	 * size of the file
+	 */
 	private long size;
+	/**
+	 * date of last modification
+	 */
 	private String date;
 	
+	/**
+	 * numeric user rights (0 or 1 or 2 or .. 7)
+	 */
 	private int userRights;
+	/**
+	 * numeric group rights (0 or 1 or 2 or .. 7)
+	 */
 	private int groupRights;
+	/**
+	 * numeric others rights (0 or 1 or 2 or .. 7)
+	 */
 	private int othersRights;
 
+	/**
+	 * Constructor
+	 */
 	public FTPFile() {
 		filename="";
 		owner="";
@@ -32,7 +65,7 @@ public class FTPFile {
 	/**
 	 * Constructor of class that store information about every file on FTP Server. It's pretty simple, but is enough to graphically present content of server directory.
 	 * 
-	 * @param file String that contains one line returned by the server that is formattedby unix standards (although this is not really standarized, but every server
+	 * @param file String that contains one line returned by the server that is formatted by unix standards (although this is not really standarized, but every server
 	 * that i worked with returned LIST in the same way, so i guess this will work everywhere)
 	 */
 	public FTPFile(String file) {

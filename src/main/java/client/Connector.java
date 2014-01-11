@@ -15,11 +15,8 @@ import java.io.InputStreamReader;
 import java.io.PrintWriter;
 import java.net.Socket;
 import java.net.UnknownHostException;
-import java.nio.channels.FileChannel;
 import java.util.ArrayList;
 import java.util.StringTokenizer;
-
-import sun.misc.IOUtils;
 
 /**
  * Class that is responsible for connection and functions working with FTP server
@@ -29,35 +26,78 @@ import sun.misc.IOUtils;
  */
 public class Connector {
 
+	/**
+	 * Socket which purpose is to communicate with FTP server
+	 */
 	private Socket server = null;
+	/**
+	 * {@see PrinterWriter} that writes to the server (whatever message we want to send)
+	 */
 	private PrintWriter write = null;
+	/**
+	 * by this we are reading responses from server
+	 */
 	private BufferedReader read = null;
 
+	/**
+	 * it allows to caught ecxeptions which are thrown by {@link Thread}, and then can do somthing with it
+	 */
 	private Thread.UncaughtExceptionHandler handler;
 
+	/**
+	 * Thread that is used to repeatedly send NOOP command
+	 */
 	private Thread timer = null;
+	/**
+	 * field that helps to find out wheter timer should be stop or not
+	 */
 	private boolean killTimer = false;
 
+	/**
+	 * Socket for sending/retrieving to/from server
+	 */
 	Socket dataSocket = null;
 
+	/**
+	 * input stream
+	 */
 	BufferedInputStream input = null;
+	/**
+	 * output stream (is used in sending/retrieving files) (and listings)
+	 */
 	BufferedOutputStream output = null;
 
+	/**
+	 * if we are connected to my FTPServer, then there should be different CHMOD command
+	 */
 	private boolean usingMyOwnSuperServer = false;
 
 	/**
-	 * @param add name of host
-	 * @param port port at which server is working
-	 * @throws UnknownHostException exception is thrown if passed hostname is invalid
-	 * @throws IOException
+	 * Class handles all communication with FTP Server.
+	 * 
 	 */
 	public Connector() throws UnknownHostException, IOException {
 	}
 
+	/**
+	 * @param h hander for timer thread
+	 * @throws UnknownHostException
+	 * @throws IOException
+	 */
 	public Connector(Thread.UncaughtExceptionHandler h) throws UnknownHostException, IOException {
 		handler = h;		
 	}
 
+	/**
+	 * this method connects to the server using passed credentials
+	 * 
+	 * @param host hostname
+	 * @param port port number of server
+	 * @param user username
+	 * @param pass password
+	 * @throws UnknownHostException
+	 * @throws IOException
+	 */
 	public synchronized void connectToServer(String host, int port, String user, String pass) throws UnknownHostException, IOException {
 		startConnectingToServer(host, port);
 
@@ -68,6 +108,13 @@ public class Connector {
 		sendPassCommand(pass);
 	}
 
+	/**
+	 * it only starts connection with the server, in case user wants to login by himself (by commands)
+	 * 
+	 * @param host hostname
+	 * @param port port number of the server
+	 * @throws IOException
+	 */
 	public void startConnectingToServer(String host, int port) throws IOException {
 		server = new Socket(host,port);
 		write = new PrintWriter(server.getOutputStream(), true);
@@ -79,6 +126,12 @@ public class Connector {
 		}
 	}
 
+	/**
+	 * method sends to the server command USER with passed username
+	 * 
+	 * @param user username
+	 * @throws IOException
+	 */
 	public void sendUserCommand(String user) throws IOException {
 		sendLine("USER " + user);
 		String response = getAllResponses("331", read.readLine());
@@ -88,6 +141,12 @@ public class Connector {
 		}
 	}
 
+	/**
+	 * method sends to the server command PASS with passed password (password is hashed, so on System.out it won't be shown)
+	 * 
+	 * @param pass password
+	 * @throws IOException
+	 */
 	public void sendPassCommand(String pass) throws IOException {
 		sendLine("PASS " + pass);
 		String response = getAllResponses("230", read.readLine());
@@ -101,6 +160,11 @@ public class Connector {
 		}
 	}
 
+	/**
+	 * Method that disconnects from the server (if not connected - throws {@see IOException} ), by sending QUIT command
+	 * 
+	 * @throws IOException
+	 */
 	public synchronized void disconnect() throws IOException {
 		try {
 			if (!server.isConnected()) {
@@ -116,6 +180,8 @@ public class Connector {
 	}
 
 	/**
+	 * method that sends PWD command, and retrieve information about working directory
+	 * 
 	 * @return name of directory in which we are
 	 * @throws IOException
 	 */
@@ -148,6 +214,7 @@ public class Connector {
 
 	/**
 	 * Lists current directory. Returns ArrayList of {@link FTPFile} in which is stored information about content of current directory.
+	 * Executes {@link client.pasv()} method.
 	 * 
 	 * @return ArrayList<{@link FTPFile}> in which are the information about files in the current directory on the server
 	 * @throws IOException
@@ -161,6 +228,13 @@ public class Connector {
 		return sendListLine();
 	}
 
+	/**
+	 * Sends LIST command, and gets listing of current working directory, but IT DOESN'T SENDS {@link client.pasv} METHOD!
+	 * 
+	 * @return {@see ArrayList} of {@link FTPFile} which represents file on the server 
+	 * @throws IOException
+	 */
+	
 	public synchronized ArrayList<FTPFile> sendListLine() throws IOException {
 		sendLine("LIST");
 		BufferedReader readList = new BufferedReader(new InputStreamReader(dataSocket.getInputStream()));
@@ -187,6 +261,8 @@ public class Connector {
 	}
 
 	/**
+	 * Method sends STOR command (it doesn't send PASV command though)
+	 * 
 	 * @param file file which will be sended to server
 	 * @param isStor true if sending STOR; false if sending APPE
 	 * @return true if everything went well
@@ -204,10 +280,12 @@ public class Connector {
 		input = new BufferedInputStream(new FileInputStream(file));
 		output = new BufferedOutputStream(dataSocket.getOutputStream());
 		boolean status = moveFile();
-		
+		return status;
 	}
 
 	/**
+	 * Sends RETR command (doesn't send PASV !)
+	 * 
 	 * @param file file in which will be saved file from server
 	 * @param filename name of the file on server (which we want download)
 	 * @return true if everything well as expected
@@ -224,11 +302,21 @@ public class Connector {
 		return moveFile();
 	}
 
+	/**
+	 * Sends APPE command (PASV must be initialized first!)
+	 * 
+	 * @param file file which we want to append
+	 * @return true if everything worked
+	 * @throws FileNotFoundException
+	 * @throws IOException
+	 */
 	public boolean sendAppeCommand(File file) throws FileNotFoundException, IOException {
 		return sendStorCommand(file, false);
 	}
 
 	/**
+	 * Sends file to the server (takes care of PASV and all this stuff)
+	 * 
 	 * @param file file we want to send to the server
 	 * @return true if everything is fine (sending was completed)
 	 * @throws IOException
@@ -239,6 +327,8 @@ public class Connector {
 	}
 
 	/**
+	 * Retrieves file from server (takes care of PASV and all this stuff)
+	 * 
 	 * @param file file at computer in which we want to save file from server
 	 * @param filename full path to the file which we want to download from server
 	 * @return true if everything is fine (sending was completed)
@@ -249,32 +339,58 @@ public class Connector {
 		else return false;
 	}
 
+	/**
+	 * Method copies file from {@link input} to {@link output}
+	 * 
+	 * @return true if everything went as expected
+	 * @throws IOException
+	 */
 	private boolean moveFile() throws IOException {
-		//TODO when sending, it deletes file from computer...
 		byte[] buffer = new byte[4096];
 		int bytesRead = 0;
 		while ((bytesRead = input.read(buffer)) != -1) {
 			output.write(buffer, 0, bytesRead);
 		}
-		output.flush();
-		output.close();
-		input.close();
+		if (output != null) {
+			output.flush();
+			output.close();
+		}
+		if (input != null) input.close();
 		dataSocket.close();
 		return transferingFileCompleted();
 	}
 
+	/**
+	 * Checks if respond from the server is as it should be
+	 * 
+	 * @return true if everything is fine; false otherwise
+	 * @throws IOException
+	 */
 	private boolean CanMoveFile() throws IOException {
 		String response = getAllResponses("150", read.readLine());
 		if (!response.startsWith ("150 ")) return false;
 		else return true;
 	}
 
+	/**
+	 * Checks if transfer is completed
+	 * 
+	 * @return true if is completed; false otherwise
+	 * @throws IOException
+	 */
 	private boolean transferingFileCompleted() throws IOException {
 		String response = getAllResponses("226", read.readLine());
 		if (response.startsWith("226 ")) return true;
 		else return false;
 	}
 
+	/**
+	 * Sends directory to the server. Uses {@link client.sendFile} and {@link makeDirectory} to achieve it. Is recursive.
+	 * 
+	 * @param directoryToSend {@see File} which represents directory that we want to send to the server.
+	 * @return true if all went as expected; false otherwise
+	 * @throws IOException
+	 */
 	public synchronized boolean sendDirectory(File directoryToSend) throws IOException {
 		File[] list = directoryToSend.listFiles();
 		ArrayList<File> directoriesList = new ArrayList<File>();
@@ -295,6 +411,14 @@ public class Connector {
 		return status;
 	}
 
+	/**
+	 * Gets directory from server. 
+	 * 
+	 * @param localDirectory {@see File} which represents directory to which we want write directory from server
+	 * @param directorypath path of directory we want to get (on the server)
+	 * @return true if everything went well; false otherwise
+	 * @throws IOException
+	 */
 	public synchronized boolean getDirectory(File localDirectory, String directorypath) throws IOException {
 		if(!localDirectory.exists()) localDirectory.mkdir();
 		boolean status = true;
@@ -312,40 +436,19 @@ public class Connector {
 		for (FTPFile d : directories) {
 			if (!d.getFilename().equals("..")) getDirectory(new File(localFilepath + d.getFilename()), d.getFilename());
 		}
+		cwd("..");
 		return status;
 	}
 
 	/**
-	 * Enter binary mode for sending binary files.
-	 */
-	public synchronized boolean bin() throws IOException {
-		sendLine("TYPE I");
-		String response = read.readLine();
-		response = getAllResponses("200", response);
-		return (response.startsWith("200 "));
-	}
-
-	/**
-	 * Enter ASCII mode for sending text files. This is usually the default
-	 * mode. Make sure you use binary mode if you are sending images or
-	 * other binary data, as ASCII mode is likely to corrupt them.
-	 */
-	public synchronized boolean ascii() throws IOException {
-		sendLine("TYPE A");
-		String response = read.readLine();
-		response = getAllResponses("200", response);
-		return (response.startsWith("200 "));
-	}
-
-
-	/**
+	 * Sends PASV command. Connects dataSocket to the Socket that server want to use for data connection
+	 * 
 	 * @return if dataSocket connected to server - true; else - false
 	 * @throws IOException
 	 */
 	public synchronized boolean pasv() throws IOException {
 		sendLine("PASV");
-		String response = read.readLine();
-		response = getAllResponses("227", response);
+		String response = getAllResponses("227", read.readLine());
 		if (!response.startsWith("227 ")) {
 			throw new IOException("Can't access passive mode "
 					+ response);
@@ -359,24 +462,24 @@ public class Connector {
 			String dataLink = response.substring(opening + 1, closing);
 			StringTokenizer tokenizer = new StringTokenizer(dataLink, ",");
 			try {
-				ip = tokenizer.nextToken() + "." + tokenizer.nextToken() + "."
-						+ tokenizer.nextToken() + "." + tokenizer.nextToken();
-				port = Integer.parseInt(tokenizer.nextToken()) * 256
-						+ Integer.parseInt(tokenizer.nextToken());
+				ip = tokenizer.nextToken() + "." + tokenizer.nextToken() + "." + tokenizer.nextToken() + "." + tokenizer.nextToken();
+				port = Integer.parseInt(tokenizer.nextToken()) * 256 + Integer.parseInt(tokenizer.nextToken());
 			} catch (Exception e) {
-				throw new IOException("Received bad data link connection "
-						+ response);
+				throw new IOException("Received bad data link connection " + response);
 			}
 		}
 		dataSocket = new Socket(ip,port);
 		if (dataSocket.isConnected()) return true;
 		else return false;
-		//	Object[] o = new Object[2];
-		//	o[0]=ip;
-		//	o[1]=port;
-		//	return o;
 	}
 
+	/**
+	 * Makes directory on the server - sends MKD command
+	 * 
+	 * @param dirpath path of the directory to be made (if it will be created in current working directory, can be only name of directory)
+	 * @return true if everything went well; false otherwise
+	 * @throws IOException
+	 */
 	public synchronized boolean makeDirectory(String dirpath) throws IOException {
 		sendLine("MKD " + dirpath);
 		String response = getAllResponses("257", read.readLine());
@@ -386,6 +489,13 @@ public class Connector {
 		else return true;
 	}
 
+	/**
+	 * Removes directory from the server (and all the files that are in it)
+	 * 
+	 * @param dirname name (or path) of the directory that we want to remove
+	 * @return true if everything went well; false otherwise
+	 * @throws IOException
+	 */
 	public synchronized boolean removeDirectory(String dirname) throws IOException {
 		cwd(dirname);
 		ArrayList<FTPFile> list = list();
@@ -412,6 +522,13 @@ public class Connector {
 		return true;
 	}
 
+	/**
+	 * Removes file from the server. Sends DELE line
+	 * 
+	 * @param filename name of the file that we want to delete
+	 * @return true if everything went well; false otherwise
+	 * @throws IOException
+	 */
 	public synchronized boolean removeFile(String filename) throws IOException {
 		sendLine("DELE " + filename);
 		String response = getAllResponses("250", read.readLine());
@@ -421,6 +538,13 @@ public class Connector {
 		else return true;
 	}
 
+	/**
+	 * Makes empty file on the server (creates temporary local file and sends it)
+	 * 
+	 * @param filename name of the file we want to create
+	 * @return true if everything went well; false otherwise
+	 * @throws IOException
+	 */
 	public synchronized boolean makeFile(String filename) throws IOException {
 		File f = new File(filename);
 		f.createNewFile();
@@ -429,6 +553,14 @@ public class Connector {
 		return test;
 	}
 
+	/**
+	 * Changes name of the file (or directory) on the server. Uses RNFR and RNTO commands to achieve that
+	 * 
+	 * @param oldFilename name of the file(or directory) from which we want to change
+	 * @param newFilename name of the file(or directory) to which we want to change
+	 * @return true if everything went well; false otherwise
+	 * @throws IOException
+	 */
 	public synchronized boolean changeName(String oldFilename, String newFilename) throws IOException {
 		sendLine("RNFR " + oldFilename);
 		String response = getAllResponses("350", read.readLine());
@@ -443,6 +575,14 @@ public class Connector {
 		return true;
 	}
 
+	/**
+	 * Changes rights of the file (or directory) on the server. Uses SITE CHMOD xxx filename syntax, or, for my FTPServer, CHMOD filename xxx
+	 * 
+	 * @param filename name of file (or directory) which rights we want to change
+	 * @param rights rights to which we want to change (must be numeric, like 777 or 644 etc.)
+	 * @return true if everything went well; false otherwise
+	 * @throws IOException
+	 */
 	public synchronized boolean changeRights(String filename, String rights) throws IOException {
 		//TODO
 		if (usingMyOwnSuperServer) sendLine("CHMOD " + filename + " " + rights);
@@ -454,17 +594,34 @@ public class Connector {
 		return true;
 	}
 
+	/**
+	 * Sends NOOP which keeps connection with server
+	 * 
+	 * @return true if everything went well; false otherwise
+	 * @throws IOException
+	 */
 	public synchronized boolean noop() throws IOException {
-		sendLine("NOOP");
-		if (getAllResponses("200 ", read.readLine()).startsWith("200 ")) return true;
+		if (getAllResponses("200", read.readLine()).startsWith("200 ")) return true;
 		else return false;
 	}
 
-	public synchronized void abort() throws IOException {
+	/**
+	 * Sends ABOR which aborts currently operation
+	 * 
+	 * @return true if everything went well; false otherwise
+	 * @throws IOException
+	 */
+	public synchronized boolean abort() throws IOException {
 		sendLine("ABOR");
-		output.close();
-		input.close();
+		sendLine("NOOP");
+		if (!dataSocket.isClosed()) {
+			output.close();
+			input.close();
+			getAllResponses("450", read.readLine()).startsWith("200 ");
+		}
 		dataSocket.close();
+		if (getAllResponses("200", read.readLine()).startsWith("200 ")) return true;
+		else return false;
 	}
 
 	/**
@@ -484,6 +641,14 @@ public class Connector {
 		if (!line.equals("NOOP")) resetNoopTimer();
 	}
 
+	/**
+	 * gets all responses from the server (because sometimes server sends additional lines with the same type of number status, but with '-')
+	 * 
+	 * @param code code we want to read all lines (like 200 or 257)
+	 * @param response first response from the server
+	 * @return last line of the response from the server (which we want)
+	 * @throws IOException
+	 */
 	private String getAllResponses(String code, String response) throws IOException {
 		String r = response;
 		while (r.startsWith(code + "-")) {
@@ -496,6 +661,11 @@ public class Connector {
 		return r;
 	}
 
+	/**
+	 * Method creates new Thread (is used to reset timer)
+	 * 
+	 * @return Thread that is used like a timer to sends NOOP line
+	 */
 	private synchronized Thread newTimerThread() {
 		return new Thread("Timer-Thread") {
 			@Override
@@ -523,10 +693,16 @@ public class Connector {
 			}
 		};
 	}
+	/**
+	 * Resets timer, mostly after the line is send to the server (because it means that we are active)
+	 */
 	private synchronized void resetNoopTimer() {
 		timer.interrupt();
 	}
 
+	/**
+	 * Cancels timer (for example, if we disconnect from the server)
+	 */
 	public synchronized void cancelNOOPDeamon() {
 		killTimer=true;
 	}

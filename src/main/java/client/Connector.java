@@ -116,6 +116,7 @@ public class Connector {
 	 * @throws IOException
 	 */
 	public void startConnectingToServer(String host, int port) throws IOException {
+		if (port == 3021) usingMyOwnSuperServer = true;
 		server = new Socket(host,port);
 		write = new PrintWriter(server.getOutputStream(), true);
 		read = new BufferedReader(new InputStreamReader(server.getInputStream()));
@@ -170,6 +171,7 @@ public class Connector {
 			if (!server.isConnected()) {
 				throw new IOException("Can't disconnect from server - you haven't connected yet!");
 			}
+			usingMyOwnSuperServer = false;
 			sendLine("QUIT");
 			getAllResponses("221", read.readLine());
 		} finally {
@@ -241,10 +243,15 @@ public class Connector {
 		String response = getAllResponses("150", read.readLine());
 		String file = null;
 		ArrayList<FTPFile> files = new ArrayList<FTPFile>();
+		files.add(new FTPFile());
 		if (response.startsWith("150 ")) {
 			while ((file=readList.readLine()) != null) {
 				System.out.println(file);
-				if (!(file.endsWith(".") && file.substring(file.lastIndexOf(".")-1, file.lastIndexOf(".")).equals(" "))) files.add(new FTPFile(file));
+				if (!(file.endsWith(".")
+						&& (file.substring(file.lastIndexOf(".")-1, file.lastIndexOf(".")).equals(" ")
+						|| file.substring(file.lastIndexOf(".")-1, file.lastIndexOf(".")).equals("."))))
+					files.add(new FTPFile(file));
+				//&& file.substring(file.lastIndexOf(".")-1, file.lastIndexOf(".")).equals("."))
 			}
 			dataSocket.close();
 		}
@@ -585,7 +592,7 @@ public class Connector {
 	 */
 	public synchronized boolean changeRights(String filename, String rights) throws IOException {
 		//TODO
-		if (usingMyOwnSuperServer) sendLine("CHMOD " + filename + " " + rights);
+		if (usingMyOwnSuperServer) sendLine("CHMOD " + filename + " " + rights.substring(0,2));
 		else sendLine("SITE CHMOD " + rights + " " + filename);
 		String response = getAllResponses("200", read.readLine());
 		if (!response.startsWith("200 ")) {
@@ -601,6 +608,7 @@ public class Connector {
 	 * @throws IOException
 	 */
 	public synchronized boolean noop() throws IOException {
+		sendLine("NOOP");
 		if (getAllResponses("200", read.readLine()).startsWith("200 ")) return true;
 		else return false;
 	}
@@ -613,11 +621,11 @@ public class Connector {
 	 */
 	public synchronized boolean abort() throws IOException {
 		sendLine("ABOR");
-		sendLine("NOOP");
+		//sendLine("NOOP");
 		if (!dataSocket.isClosed()) {
 			output.close();
 			input.close();
-			getAllResponses("450", read.readLine()).startsWith("200 ");
+			getAllResponses("426", read.readLine());
 		}
 		dataSocket.close();
 		if (getAllResponses("200", read.readLine()).startsWith("200 ")) return true;

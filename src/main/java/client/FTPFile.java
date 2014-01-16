@@ -55,11 +55,12 @@ public class FTPFile {
 	 * Constructor
 	 */
 	public FTPFile() {
-		filename="";
-		owner="";
-		group="";
+		filename="..";
+		owner=null;
+		group=null;
 		size=0;
 		date=null;
+		isDirectory=true;
 	}
 
 	/**

@@ -10,16 +10,30 @@ import javax.swing.table.AbstractTableModel;
 
 import client.FTPFile;
 
-/** A TableModel to hold File[]. */
+/**
+ * Class which handles creating tables of files on FTP server
+ * 
+ * @author Jakub Fortunka
+ *
+ */
 class FTPFileTableModel extends AbstractTableModel {
 
     /**
-	 * 
+	 * needed for eventual serialization
 	 */
 	private static final long serialVersionUID = -642746198293378998L;
 	
+	/**
+	 * ArrayList of FTPFile which represents files in current directory on server
+	 */
 	private ArrayList<FTPFile> files = new ArrayList<FTPFile>();
+    /**
+     * current FileSystemView (for icons)
+     */
     private FileSystemView fileSystemView = FileSystemView.getFileSystemView();
+    /**
+     * names of columns of table
+     */
     private String[] columns = {
         "Icon",
         "File",
@@ -38,6 +52,11 @@ class FTPFileTableModel extends AbstractTableModel {
         this.files = files;
     }
 
+    /** 
+     * get
+     * 
+     * @see javax.swing.table.TableModel#getValueAt(int, int)
+     */
     public Object getValueAt(int row, int column) {
         //FTPFile file = files[row];
     	FTPFile file = files.get(row);

@@ -35,21 +35,25 @@ public class RightsDialog extends JDialog implements ActionListener {
 	 */
 	private static final long serialVersionUID = 4003666607636371386L;
 	
+	/**
+	 * textField for showing rights in "number-way" (777,644 etc.). Rights can be inserted that way.
+	 */
 	private JTextField textField;
-	private JCheckBox chckbxReadOwner;
-	private JCheckBox chckbxWriteOwner;
-	private JCheckBox chckbxExecuteOwner;
-	private JCheckBox chckbxReadGroup;
-	private JCheckBox chckbxWriteGroup;
-	private JCheckBox chckbxExecuteGroup;
-	private JCheckBox chckbxReadOthers;
-	private JCheckBox chckbxWriteOthers;
-	private JCheckBox chckbxExecuteOthers;
+	/**
+	 * checkboxes for rights.
+	 */
+	private JCheckBox chckbxReadOwner,chckbxWriteOwner,chckbxExecuteOwner,chckbxReadGroup,chckbxWriteGroup,chckbxExecuteGroup,chckbxReadOthers,chckbxWriteOthers,chckbxExecuteOthers;
 	
+	/**
+	 * current rights of choosen files
+	 */
 	private String rights = null;
 
 	/**
-	 * @param fr
+	 * initializes this Dialog
+	 * 
+	 * @param fr parent frame
+	 * @param currentRights current rights of choosen file
 	 */
 	public RightsDialog(JFrame fr, String currentRights) {
 		super ( fr, "Rights chooser", false );
@@ -196,6 +200,11 @@ public class RightsDialog extends JDialog implements ActionListener {
 		super.setVisible(b);
 	}
 
+	/**
+	 * dynamicly changes state of checkboxes according to text value
+	 * 
+	 * @param rights numeric rights of file
+	 */
 	private void changeCheckboxes(String rights) {
 		int owner = Integer.parseInt(rights.substring(0,1));
 		int group = Integer.parseInt(rights.substring(1,2));
@@ -206,6 +215,14 @@ public class RightsDialog extends JDialog implements ActionListener {
 
 	}
 
+	/**
+	 * sets state of checkboxes to adjust to passing rights
+	 * 
+	 * @param right right for user/group/others
+	 * @param cr checkBox for read
+	 * @param cw checkBox for write
+	 * @param cx checkBox for execute
+	 */
 	private void setCheckboxes(int right, JCheckBox cr, JCheckBox cw, JCheckBox cx) {
 		switch (right) {
 		case 0:
@@ -251,6 +268,11 @@ public class RightsDialog extends JDialog implements ActionListener {
 		}
 	}
 	
+	/**
+	 * Dynamicly changes text in textField according to setted checkbox
+	 * 
+	 * @param e ActionEvent - is fired when there is change in state of any checkbox
+	 */
 	private void changeRightInTextField(ActionEvent e) {
 		String oldRights = textField.getText();
 		JCheckBox c = (JCheckBox) e.getSource();
@@ -268,6 +290,12 @@ public class RightsDialog extends JDialog implements ActionListener {
 		textField.setText(newRights);
 	}
 	
+	/**
+	 * method that compute new right
+	 * 
+	 * @param c checkbox
+	 * @return
+	 */
 	private int getChangeValue(JCheckBox c) {
 		int value;
 		if (c.isSelected()) {
@@ -283,6 +311,12 @@ public class RightsDialog extends JDialog implements ActionListener {
 		return value;
 	}
 	
+	/**
+	 * 
+	 * 
+	 * @param c
+	 * @return
+	 */
 	private int getChangePosition(JCheckBox c) {
 		int changePosition;
 		if (c == chckbxExecuteOwner || c == chckbxReadOwner || c == chckbxWriteOwner) changePosition=0;
@@ -291,14 +325,23 @@ public class RightsDialog extends JDialog implements ActionListener {
 		return changePosition;
 	}
 	
+	/**
+	 * @return return textField
+	 */
 	public String getRights() {
 		return textField.getText();
 	}
 	
+	/**
+	 * @see java.awt.event.ActionListener#actionPerformed(java.awt.event.ActionEvent)
+	 */
 	public void actionPerformed(ActionEvent e) {
 		changeRightInTextField(e);
 	}
 	
+	/**
+	 * @param r rights to set
+	 */
 	public void setRights(String r) {
 		rights = r;
 	}

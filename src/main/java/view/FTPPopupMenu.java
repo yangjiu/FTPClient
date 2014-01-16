@@ -17,29 +17,35 @@ import java.io.File;
 import java.io.IOException;
 
 /**
+ * PopupMenu for ftpTable in main frame
+ * 
  * @author Jakub Fortunka
  *
  */
 public class FTPPopupMenu extends JPopupMenu {
 
 	/**
-	 * 
+	 * needed for eventual serialization
 	 */
 	private static final long serialVersionUID = -7831472688804082458L;
 
-	private JMenuItem mntmGetFile;
-	private JMenuItem mntmMakeFile;
-	private JMenuItem mntmMakeDirectory;
-	private JMenuItem mntmDelete;
-	private JMenuItem mntmChangeName;
-	private JMenuItem mntmChangeRights;
+	/**
+	 * Elements of Popup Menu
+	 */
+	private JMenuItem mntmGetFile,mntmMakeFile,mntmMakeDirectory,mntmDelete,mntmChangeName,mntmChangeRights;
 
+	/**
+	 * class containing dialog window with rights choose, when this option is choosen.
+	 */
 	RightsDialog dialog = null ;
 
+	/**
+	 * Main Class of GUI
+	 */
 	private ClientMainFrame view=null;
 
 	/**
-	 * @param view
+	 * @param view main class of GUI
 	 */
 	public FTPPopupMenu(ClientMainFrame view) {
 		this.view = view;
@@ -100,6 +106,11 @@ public class FTPPopupMenu extends JPopupMenu {
 		add(mntmChangeRights);
 	}
 
+	/** 
+	 * This method is needed for one thing - when popup menu is invoked from JScrollPane, it has to make unable to click some options.
+	 * 
+	 * @see javax.swing.JPopupMenu#setVisible(boolean)
+	 */
 	@Override
 	public void setVisible(boolean b) {
 		super.setVisible(b);
@@ -114,6 +125,11 @@ public class FTPPopupMenu extends JPopupMenu {
 		}			
 	}
 
+	/**
+	 * method that turns of (if needed) some options from PopupMenu
+	 * 
+	 * @param isClickable true if options should be clickable
+	 */
 	private void setMenuItems(boolean isClickable) {
 		mntmChangeName.setEnabled(isClickable);
 		mntmDelete.setEnabled(isClickable);
@@ -121,6 +137,11 @@ public class FTPPopupMenu extends JPopupMenu {
 		mntmChangeRights.setEnabled(isClickable);
 	}
 
+	/**
+	 * method which gets file (or directory) that is choosen from server
+	 * 
+	 * @throws IOException
+	 */
 	private void getFile() throws IOException {
 		int row = view.getFTPTable().getSelectedRow();
 		String filename = (String) view.getFTPTable().getValueAt(row, 1);
@@ -136,21 +157,35 @@ public class FTPPopupMenu extends JPopupMenu {
 	}
 
 
+	/**
+	 * makes file on server
+	 */
 	private void makeFile() {
 		mk(false);
 		//System.out.println("Test");
 
 	}
 
+	/**
+	 * makes directory on server
+	 */
 	private void makeDirectory() {
 		mk(true);
 	}
 
+	/**
+	 * manages of making file/directory on server. Shows InputDialog for name.
+	 * 
+	 * @param createDirectory
+	 */
 	private void mk(boolean createDirectory) {
 		String filename = JOptionPane.showInputDialog("Enter a name");
 		view.createFileOrDirectoryOnServer(filename, createDirectory);
 	}
 
+	/**
+	 * Uses method from {@link view.FTPPopupMenu#view} to delete file/directory from server
+	 */
 	private void delete() {
 		int row = view.getFTPTable().getSelectedRow();
 		String filename = (String) view.getFTPTable().getValueAt(row, 1);
@@ -163,6 +198,9 @@ public class FTPPopupMenu extends JPopupMenu {
 		view.deleteFileOrDirectoryFromServer(filename, isDirectory);
 	}
 
+	/**
+	 * Executes method from main Class to change name of file on server
+	 */
 	private void changeName() {
 		String newFilename = JOptionPane.showInputDialog("Enter a name");
 		int row = view.getFTPTable().getSelectedRow();
@@ -173,6 +211,11 @@ public class FTPPopupMenu extends JPopupMenu {
 		view.changeNameOnServer(oldFilename, newFilename);
 	}
 
+	/**
+	 * Executes method from main class to change rights of choosen file/directory
+	 * 
+	 * @throws IOException
+	 */
 	private void changeRigths() throws IOException {
 		int row = view.getFTPTable().getSelectedRow();
 		FTPFile f = view.getFTPFiles().get(row);
@@ -189,6 +232,11 @@ public class FTPPopupMenu extends JPopupMenu {
 		if (!rights.equals("-1")) view.changeRights(f.getFilename(), rights);
 	}
 
+	/**
+	 * shows messageDialog with exception message
+	 * 
+	 * @param e
+	 */
 	private void throwException(Exception e) {
 		JOptionPane.showMessageDialog(view.getFrame(),
 				e.getMessage(),
@@ -197,6 +245,11 @@ public class FTPPopupMenu extends JPopupMenu {
 		return ;
 	}
 
+	/**
+	 * checks if mouse, when popupMenu is showed was on JTable or JScrollPane
+	 * 
+	 * @return true if mouse is on JTable; false otherwise
+	 */
 	public boolean isMouseOnTable() {
 		if (this.getInvoker() instanceof JTable) return true;
 		else return false;

@@ -14,27 +14,32 @@ import java.awt.event.ActionEvent;
 import java.io.File;
 import java.io.IOException;
 
+
 /**
+ * Class for fancy PopupMenu showed when right mouse button is clicked on JTable representing local files
+ * 
  * @author Jakub Fortunka
  *
  */
 public class LocalPopupMenu extends JPopupMenu {
 
 	/**
-	 * 
+	 * needed for eventual serialization
 	 */
 	private static final long serialVersionUID = -8410567121993033604L;
 	
-	private JMenuItem mntmSendFile;
-	private JMenuItem mntmNewDirectory;
-	private JMenuItem mntmDelete;
-	private JMenuItem mntmChangeName;
-	private JMenuItem mntmMakeFile;	
+	/**
+	 * elements of PopupMenu
+	 */
+	private JMenuItem mntmSendFile,mntmNewDirectory,mntmDelete,mntmChangeName,mntmMakeFile;
 	
+	/**
+	 * main class of gui
+	 */
 	private ClientMainFrame view=null;
 	
 	/**
-	 * 
+	 * Initialize popupMenu
 	 */	
 	public LocalPopupMenu(ClientMainFrame view) {
 		this.view = view;
@@ -103,6 +108,11 @@ public class LocalPopupMenu extends JPopupMenu {
 		
 	}
 	
+	/** 
+	 * is needed to make some of menu items unable to click when it is needed (mouse clicked on JScrollPane)
+	 * 
+	 * @see javax.swing.JPopupMenu#setVisible(boolean)
+	 */
 	@Override
 	public void setVisible(boolean b) {
 		super.setVisible(b);
@@ -128,6 +138,11 @@ public class LocalPopupMenu extends JPopupMenu {
 		this.setVisible(b);
 	}
 	
+	/**
+	 * Excutes method in main class which is responsible for sending file to server, to which this method passes currently chosen file/directory
+	 * 
+	 * @throws IOException
+	 */
 	private void send() throws IOException {
 		int row = view.getLocalTable().getSelectedRow();
 		String filename = (String) view.getLocalTable().getValueAt(row, 1);
@@ -138,14 +153,30 @@ public class LocalPopupMenu extends JPopupMenu {
 		view.sendToServer(fileToSend, isDirectory);
 	}
 	
+	/**
+	 * makes local file
+	 * 
+	 * @throws IOException
+	 */
 	private void makeFile() throws IOException {
 		mk(false);		
 	}
 	
+	/**
+	 * makes local directory
+	 * 
+	 * @throws IOException
+	 */
 	private void makeDirectory() throws IOException {
 		mk(true);
 	}
 	
+	/**
+	 * manages of making file/directory on local machine. Shows InputDialog for name.
+	 * 
+	 * @param createDirectory
+	 * @throws IOException
+	 */
 	private void mk(boolean createDirectory) throws IOException {
 		String filename = JOptionPane.showInputDialog("Enter a filename");
 		String path = view.getFileroot().getAbsolutePath() + File.separator;
@@ -155,6 +186,11 @@ public class LocalPopupMenu extends JPopupMenu {
 		view.refreshCurrentDirectory();
 	}
 	
+	/**
+	 * deletes file from local machine. Executes {@link view.LocalPopupMenu#deleteLocalFile(File)}.
+	 * 
+	 * @throws IOException
+	 */
 	private void deleteFile() throws IOException {
 		int row = view.getLocalTable().getSelectedRow();
 		String filename = (String) view.getLocalTable().getValueAt(row, 1);
@@ -164,6 +200,11 @@ public class LocalPopupMenu extends JPopupMenu {
 		view.refreshCurrentDirectory();
 	}
 	
+	/**
+	 * Method for deleting local file/directory.
+	 * 
+	 * @param fileToDelete
+	 */
 	private void deleteLocalFile(File fileToDelete) {
 		if (fileToDelete.isDirectory()) {
 			if (fileToDelete.list().length==0) fileToDelete.delete();
@@ -179,6 +220,11 @@ public class LocalPopupMenu extends JPopupMenu {
 		else fileToDelete.delete();
 	}
 	
+	/**
+	 * changes name of local file/directory
+	 * 
+	 * @throws IOException
+	 */
 	private void changeName() throws IOException {
 		String newFilename = JOptionPane.showInputDialog("Enter a new filename: ");
 		int row = view.getLocalTable().getSelectedRow();
@@ -193,6 +239,11 @@ public class LocalPopupMenu extends JPopupMenu {
 		}		
 	}
 
+	/**
+	 * shows messageDialog with exception message
+	 * 
+	 * @param e
+	 */
 	private void throwException(Exception e) {
 		JOptionPane.showMessageDialog(view.getFrame(),
 				e.getMessage(),
@@ -201,6 +252,11 @@ public class LocalPopupMenu extends JPopupMenu {
 		return ;
 	}
 	
+	/**
+	 * Checks if mouse is on JTable when this PopupMenu will be showed
+	 * 
+	 * @return true if this PopupMenu will be shown on JTable; false otherwise
+	 */
 	public boolean isMouseOnTable() {
 		if (this.getInvoker() instanceof JTable) return true;
 		else return false;

@@ -53,49 +53,124 @@ import java.awt.event.MouseEvent;
 import javax.swing.BoxLayout;
 
 /**
+ * Class in which is initialized main window of the client application
+ * 
  * @author Jakub Fortunka
  *
  */
 public class ClientMainFrame {
 
+	/**
+	 * Object of class that is responsible for contact with server
+	 */
 	private Client serverConnect = null;
 
+	/**
+	 * main frame
+	 */
 	private JFrame frmFtpClient;
 
+	/**
+	 * text field in which user is inserting login for server
+	 */
 	private JTextField textLogin;
+	/**
+	 * password field for password for the server
+	 */
 	private JPasswordField passwordField;
+	/**
+	 * text field for hostname of server
+	 */
 	private JTextField textHost;
+	/**
+	 * text area which works as System.out
+	 */
 	private JTextArea output;
+	/**
+	 * text field for inserting port number
+	 */
 	private JTextField textPort;
 
+	/**
+	 * popup menu for table which represents local files
+	 */
 	private LocalPopupMenu localPopupMenu;
+	/**
+	 * popup menu for table representing files on FTP Server
+	 */
 	private FTPPopupMenu ftpPopupMenu;
 
+	/**
+	 * JTable which is responsible for represnting local files
+	 */
 	private JTable localTable;
 
+	/**
+	 * JTable representing files from FTP Server
+	 */
 	private JTable ftpTable;
-
-	/** Table model for File[]. */
+	/**
+	 * Table model for localTable
+	 */
 	private FileTableModel fileTableModel;
+	/**
+	 * list selection listener for local table
+	 */
 	private ListSelectionListener listSelectionListener;
+	/**
+	 * true if columns for local table already have set sizes
+	 */
 	private boolean cellSizesSet = false;
 
-	/* Table model for FTPFile[] */
+	
+	/**
+	 * Table model for FTP table
+	 */
 	private FTPFileTableModel ftpFileTableModel;
+	/**
+	 * list selection listener for ftpTable {@link ListSelectionListener}
+	 */
 	private ListSelectionListener ftpSelectionListener;
+	/**
+	 * true if columns for ftp table have 
+	 */
 	private boolean ftpCellSizesSet = false;
 
+	/**
+	 * {@link File} which represents currently working directory
+	 */
 	private File fileRoot = null;
+	/**
+	 * list of {@link File}[] with all the files in the currently directory
+	 */
 	private File[] subItems = null;
 
+	/**
+	 * List of files in directory in which we are currently working
+	 */
 	private ArrayList<FTPFile> ftpFiles = null;
+	/**
+	 * Path of the directory in which we currently are on the FTP Sever
+	 */
 	private String ftpPath;
 
+	/**
+	 * Drag source for both tables
+	 */
 	private DragSource ds = new DragSource();
 
+	/**
+	 * true if source of drag is localTable
+	 */
 	private boolean dragLocal;
 
+	/**
+	 * Handler for {@link RuntimeException} from threads in {@link Connector}
+	 */
 	private Thread.UncaughtExceptionHandler handler;
+	/**
+	 * text field in which user can types commands
+	 */
 	private JTextField commandField;
 
 	/**
@@ -123,6 +198,7 @@ public class ClientMainFrame {
 
 	/**
 	 * Initialize the contents of the frame.
+	 * Sets up listeners, exception handlers, and DragGestureListener
 	 */
 	private void initialize() {
 		frmFtpClient = new JFrame();
@@ -191,14 +267,6 @@ public class ClientMainFrame {
 						}
 					}
 				}.start();
-				/*try {
-					serverConnect.connectToServer(textLogin.getText(), String.copyValueOf(passwordField.getPassword()), textHost.getText(), Integer.parseInt(textPort.getText()));
-					ftpPath = serverConnect.pwd();
-					ftpFiles = serverConnect.list();
-					setFtpTableData(ftpFiles);
-				} catch (NumberFormatException | IOException e) {
-					throwException(e);
-				}*/
 			}
 		});
 
@@ -213,13 +281,19 @@ public class ClientMainFrame {
 		JButton btnDisconnect = new JButton("Disconnect");
 		btnDisconnect.addActionListener(new ActionListener() {
 			public void actionPerformed(ActionEvent arg0) {
-				try {
-					if (!serverConnect.isConnected()) throw new IOException("You haven't connected yet!");
-					serverConnect.disconnectFromServer();
-					clearFTPFileList();
-				} catch (IOException e) {
-					throwException(e);
-				}
+				new Thread() {
+					@Override
+					public void run() {
+						try {
+							if (!serverConnect.isConnected()) throw new IOException("You haven't connected yet!");
+							serverConnect.disconnectFromServer();
+							clearFTPFileList();
+						} catch (IOException e) {
+							throwException(e);
+						}
+					}
+				}.start();
+				
 			}
 		});
 		menu.add(btnDisconnect);
@@ -230,18 +304,23 @@ public class ClientMainFrame {
 		commandField = new JTextField();
 		commandField.addActionListener(new ActionListener() {
 			public void actionPerformed(ActionEvent arg0) {
-				try {
-					String command = commandField.getText();
-					if (command.startsWith("ftp")) {
-						int port = -1;
-						if (!textPort.getText().isEmpty()) port = Integer.parseInt(textPort.getText());
-						serverConnect.ftpCommand(textHost.getText(), port, textLogin.getText(), String.copyValueOf(passwordField.getPassword()));
+				new Thread() {
+					@Override
+					public void run() {
+						try {
+							String command = commandField.getText();
+							if (command.startsWith("ftp")) {
+								int port = -1;
+								if (!textPort.getText().isEmpty()) port = Integer.parseInt(textPort.getText());
+								serverConnect.ftpCommand(textHost.getText(), port, textLogin.getText(), String.copyValueOf(passwordField.getPassword()));
+							}
+							else executeCommand(commandField.getText());
+							commandField.setText("");
+						} catch (IOException e) {
+							throwException(e);
+						}
 					}
-					else executeCommand(commandField.getText());
-					commandField.setText("");
-				} catch (IOException e) {
-					throwException(e);
-				}
+				};
 			}
 		});
 		menu.add(commandField);
@@ -485,10 +564,18 @@ public class ClientMainFrame {
 		});
 	}
 
+	/**
+	 * sets {@link view.ClientMainFrame#dragLocal} to false
+	 */
 	private void clearDragState() {
 		dragLocal=false;
 	}
 
+	/**
+	 * Method that is responsible for appending text in our JTextArea
+	 * 
+	 * @param text whats will be appended in {@link view.ClientMainFrame#output}
+	 */
 	private void updateTextArea(final String text) {
 		SwingUtilities.invokeLater(new Runnable() {
 			public void run() {
@@ -497,6 +584,9 @@ public class ClientMainFrame {
 		});
 	}
 
+	/**
+	 * method that redirects System.out to {@link view.ClientMainFrame#output}
+	 */
 	private void redirectSystemStreams() {
 		OutputStream out = new OutputStream() {
 			@Override
@@ -519,15 +609,28 @@ public class ClientMainFrame {
 		System.setErr(new PrintStream(out, true));
 	}
 
-	/** Update the table on the EDT */
+	/**
+	 * methods that sets {@link view.ClientMainFrame#localTable} with read files from directory
+	 * 
+	 * @param files files which will be "made" into rows of JTable
+	 */
 	private void setTableData(final File[] files) {
 		setDataInTable(files, null);
 	}
 
+	/**
+	 * @param files ArrayList of {@link client.FTPFile} objects which represents files on FTP Server
+	 */
 	private void setFtpTableData(final ArrayList<FTPFile> files) {
 		setDataInTable(null, files);
 	}
 
+	/**
+	 * Method that sets data in chosen table
+	 * 
+	 * @param files if null, method is entering data for {@link view.ClientMainFrame#ftpTable}
+	 * @param ftpFiles if null method is entering data for {@link view.ClientMainFrame#localTable}
+	 */
 	private void setDataInTable(final File[] files, final ArrayList<FTPFile> ftpFiles) {
 		SwingUtilities.invokeLater(new Runnable() {
 			public void run() {
@@ -566,6 +669,13 @@ public class ClientMainFrame {
 		});
 	}
 
+	/**
+	 * method that sets column width for chosen column
+	 * 
+	 * @param column number of column for which we want to set width
+	 * @param width width to what we want resize column
+	 * @param localeList true if we are sizing {@link view.ClientMainFrame#localTable}
+	 */
 	private void setColumnWidth(int column, int width, boolean localeList) {
 		TableColumn tableColumn = null;
 		if (localeList) tableColumn = localTable.getColumnModel().getColumn(column);
@@ -582,6 +692,11 @@ public class ClientMainFrame {
 		tableColumn.setMinWidth(width);
 	}
 
+	/**
+	 * Method which is responsible for action when there is double click of mouse on {@link view.ClientMainFrame#localTable}
+	 * 
+	 * @param e {@link MouseEvent} object representing event that has place
+	 */
 	private void localDoubleClick(MouseEvent e) {
 		JTable target = (JTable)e.getSource();
 		int row = target.getSelectedRow();
@@ -615,6 +730,11 @@ public class ClientMainFrame {
 		}
 	}
 
+	/**
+	 * Method which is responsible for action when there is double click of mouse on {@link view.ClientMainFrame#ftpTable}
+	 * 
+	 * @param e {@link MouseEvent} object representing event that has place
+	 */
 	private void ftpDoubleClick(MouseEvent e) throws IOException {
 		JTable target = (JTable)e.getSource();
 		int row = target.getSelectedRow();
@@ -657,6 +777,12 @@ public class ClientMainFrame {
 		}.start();
 	}
 
+	/**
+	 * Method that is responsible for action when file (or directory) is dropped from ftpTable to localTable
+	 * 
+	 * @param rowOfLocalTable row of localTable at which file was dropped
+	 * @throws IOException
+	 */
 	private void getFileByDrop(int rowOfLocalTable) throws IOException {
 		int row = ftpTable.getSelectedRow();
 		File fileToGet = null;
@@ -671,6 +797,12 @@ public class ClientMainFrame {
 		refreshCurrentDirectory();
 	}
 
+	/**
+	 * Method that is responsible for action when file (or directory) is dropped from localTable to ftpTable
+	 * 
+	 * @param rowOfFtpTable row of ftpTable at which file was dropped
+	 * @throws IOException
+	 */
 	private void sendFileByDrop(int rowOfFtpTable) throws IOException {
 		int row = localTable.getSelectedRow();
 		String filename = (String) localTable.getValueAt(row, 1);
@@ -679,6 +811,13 @@ public class ClientMainFrame {
 		refreshFTPDirectory();
 	}
 
+	/**
+	 * method responsible for action when we want to download file/directory from server
+	 * 
+	 * @param fileToGet {@link File} object representing file to which we want to save file 
+	 * @param filename name of file we want to get from server
+	 * @param isDirectory true if we are getting directory
+	 */
 	public void getFileOrDirectory(final File fileToGet, final String filename,final boolean isDirectory) {
 		new Thread() {
 			@Override
@@ -699,6 +838,12 @@ public class ClientMainFrame {
 		}.start();
 	}
 
+	/**
+	 * method responsible for sending file to server (is using {@link Client} class)
+	 * 
+	 * @param fileToSend File we want to send
+	 * @param isDirectory true if we are sending directory
+	 */
 	public void sendToServer(final File fileToSend, final boolean isDirectory) {
 		new Thread() {
 			@Override
@@ -714,6 +859,12 @@ public class ClientMainFrame {
 		}.start();
 	}
 
+	/**
+	 * Method that creates file/directory on server (uses {@link Client} class)
+	 * 
+	 * @param name name of file/directory we want to create
+	 * @param createDirectory true if we are creating directory
+	 */
 	public void createFileOrDirectoryOnServer(String name,boolean createDirectory) {
 		try {
 			if (createDirectory) serverConnect.createRemoteDirectory(name);
@@ -725,6 +876,12 @@ public class ClientMainFrame {
 
 	}
 
+	/**
+	 * method which is responsible for removing file/directory from server
+	 * 
+	 * @param filename name of file/directory we want to remove
+	 * @param isDirectory true if we want to remove directory
+	 */
 	public void deleteFileOrDirectoryFromServer(final String filename, final boolean isDirectory) {
 		new Thread() {
 			@Override
@@ -739,6 +896,12 @@ public class ClientMainFrame {
 		}.start();
 	}
 
+	/**
+	 * methods that can change name of file/directory on the FTP Server
+	 * 
+	 * @param oldFilename old name of file
+	 * @param newFilename name of file we want to change to
+	 */
 	public void changeNameOnServer(String oldFilename, String newFilename) {
 		try {
 			serverConnect.changeRemoteFilename(oldFilename, newFilename);
@@ -749,6 +912,12 @@ public class ClientMainFrame {
 
 	}
 
+	/**
+	 * method that is responsible for changing rights of file
+	 * 
+	 * @param filename name of file which rights we want to change
+	 * @param rights to what rights we want to change
+	 */
 	public void changeRights(String filename, String rights) {
 		try {
 			serverConnect.changeRights(filename, rights);
@@ -758,6 +927,11 @@ public class ClientMainFrame {
 		}
 	}
 
+	/**
+	 * method responsible for moving file on local computer
+	 * 
+	 * @param row row of localTable at which we dropped the file
+	 */
 	private void moveLocalFile(int row) {
 		String filename = (String) localTable.getValueAt(localTable.getSelectedRow(), 1);
 		String dragOn = (String) localTable.getValueAt(row, 1);
@@ -775,6 +949,11 @@ public class ClientMainFrame {
 		}
 	}
 
+	/**
+	 * method responsible for moving file on FTP Server
+	 * 
+	 * @param row row of ftpTable at which we dropped the file
+	 */
 	private void moveServerFile(int row) {
 		String filename = (String) ftpTable.getValueAt(ftpTable.getSelectedRow(), 1);
 		String maybeDir = (String)ftpTable.getValueAt(row, 1);
@@ -793,52 +972,90 @@ public class ClientMainFrame {
 		}
 	}
 
+	/**
+	 * method which makes sure program will execute the command user enters in {@link view.ClientMainFrame#commandField}
+	 * 
+	 * @param command line of command
+	 * @throws IOException
+	 */
 	private void executeCommand(String command) throws IOException {
 		if (command.endsWith(" ")) command = command.trim();
 		serverConnect.sendCommand(command, fileRoot.getAbsolutePath());
 	}
 
+	/**
+	 * method refresh localTable
+	 */
 	public void refreshCurrentDirectory() {
 		subItems = fileRoot.listFiles();
 		setTableData(subItems);
 	}
 
+	/**
+	 * method refresh ftpTable
+	 * 
+	 * @throws IOException
+	 */
 	public void refreshFTPDirectory() throws IOException {
 		ftpFiles = serverConnect.list();
 		setFtpTableData(ftpFiles);
 	}
 
+	/**
+	 * method that clears ftpTable (is executed after disconnection)
+	 */
 	public void clearFTPFileList() {
 		ftpFiles = new ArrayList<FTPFile>();
 		setFtpTableData(ftpFiles);
 	}
 
+	/**
+	 * @return the localTable
+	 */
 	public JTable getLocalTable() {
 		return localTable;
 	}
 
+	/**
+	 * @return the frmFtpClient
+	 */
 	public JFrame getFrame() {
 		return frmFtpClient;
 	}
 
-	public File getFileroot() {
-		return fileRoot;
-	}
-
+	/**
+	 * @return the ftpTable
+	 */
 	public JTable getFTPTable() {
 		return ftpTable;
 	}
 
+	/**
+	 * @return the fileRoot
+	 */
+	public File getFileroot() {
+		return fileRoot;
+	}
+
+	/**
+	 * @return the ftpFiles
+	 */
 	public ArrayList<FTPFile> getFTPFiles() {
 		return ftpFiles;
 	}
 
+	/**
+	 * shows JOptionPane with exception message
+	 * 
+	 * @param e exception which message will be shown
+	 */
 	private void throwException(Exception e) {
 		//	if (connection != null) connection.cancelNOOPDeamon();
 		JOptionPane.showMessageDialog(frmFtpClient,
 				e.getMessage(),
 				"Problem!",
 				JOptionPane.WARNING_MESSAGE);
+		e.printStackTrace();
 		return ;
 	}
 }

@@ -18,6 +18,8 @@ import java.net.UnknownHostException;
 import java.util.ArrayList;
 import java.util.StringTokenizer;
 
+import exception.ConnectionException;
+
 /**
  * Class that is responsible for connection and functions working with FTP server
  * 
@@ -56,16 +58,16 @@ public class Connector {
 	/**
 	 * Socket for sending/retrieving to/from server
 	 */
-	Socket dataSocket = null;
+	private Socket dataSocket = null;
 
 	/**
 	 * input stream
 	 */
-	BufferedInputStream input = null;
+	private BufferedInputStream input = null;
 	/**
 	 * output stream (is used in sending/retrieving files) (and listings)
 	 */
-	BufferedOutputStream output = null;
+	private BufferedOutputStream output = null;
 
 	/**
 	 * if we are connected to my FTPServer, then there should be different CHMOD command
@@ -76,15 +78,13 @@ public class Connector {
 	 * Class handles all communication with FTP Server.
 	 * 
 	 */
-	public Connector() throws UnknownHostException, IOException {
+	public Connector() {
 	}
 
 	/**
 	 * @param h hander for timer thread
-	 * @throws UnknownHostException
-	 * @throws IOException
 	 */
-	public Connector(Thread.UncaughtExceptionHandler h) throws UnknownHostException, IOException {
+	public Connector(Thread.UncaughtExceptionHandler h) {
 		handler = h;		
 	}
 
@@ -97,8 +97,9 @@ public class Connector {
 	 * @param pass password
 	 * @throws UnknownHostException
 	 * @throws IOException
+	 * @throws ConnectionException 
 	 */
-	public synchronized void connectToServer(String host, int port, String user, String pass) throws UnknownHostException, IOException {
+	public synchronized void connectToServer(String host, int port, String user, String pass) throws UnknownHostException, IOException, ConnectionException {
 		startConnectingToServer(host, port);
 
 		timer = newTimerThread();
@@ -115,7 +116,7 @@ public class Connector {
 	 * @param port port number of the server
 	 * @throws IOException
 	 */
-	public void startConnectingToServer(String host, int port) throws IOException {
+	public void startConnectingToServer(String host, int port) throws ConnectionException, IOException {
 		if (port == 3021) usingMyOwnSuperServer = true;
 		server = new Socket(host,port);
 		write = new PrintWriter(server.getOutputStream(), true);
@@ -123,7 +124,7 @@ public class Connector {
 		String response = null;
 		response = getAllResponses("220", read.readLine());
 		if (!response.startsWith("220 ")) {
-			throw new IOException("Unknown response from FTP Server: " + response);
+			throw new ConnectionException("Unknown response from FTP Server: " + response);
 		}
 	}
 
@@ -132,13 +133,14 @@ public class Connector {
 	 * 
 	 * @param user username
 	 * @throws IOException
+	 * @throws ConnectionException 
 	 */
-	public void sendUserCommand(String user) throws IOException {
+	public void sendUserCommand(String user) throws IOException, ConnectionException {
 		sendLine("USER " + user);
 		String response = getAllResponses("331", read.readLine());
 		if (!response.startsWith("331 ")) {
 			if (timer != null) cancelNOOPDeamon();
-			throw new IOException("There is a problem with username:  "	+ response);
+			throw new ConnectionException("There is a problem with username:  "	+ response);
 		}
 	}
 
@@ -147,13 +149,14 @@ public class Connector {
 	 * 
 	 * @param pass password
 	 * @throws IOException
+	 * @throws ConnectionException 
 	 */
-	public void sendPassCommand(String pass) throws IOException {
+	public void sendPassCommand(String pass) throws IOException, ConnectionException {
 		sendLine("PASS " + pass);
 		String response = getAllResponses("230", read.readLine());
 		if (!response.startsWith("230 ")) {
 			if (timer != null) cancelNOOPDeamon();
-			throw new IOException("There is a problem with password: " + response);
+			throw new ConnectionException("There is a problem with password: " + response);
 		}
 		if (timer==null) {
 			timer = newTimerThread();
@@ -165,11 +168,12 @@ public class Connector {
 	 * Method that disconnects from the server (if not connected - throws {@see IOException} ), by sending QUIT command
 	 * 
 	 * @throws IOException
+	 * @throws ConnectionException 
 	 */
-	public synchronized void disconnect() throws IOException {
+	public synchronized void disconnect() throws IOException, ConnectionException {
 		try {
 			if (!server.isConnected()) {
-				throw new IOException("Can't disconnect from server - you haven't connected yet!");
+				throw new ConnectionException("Can't disconnect from server - you haven't connected yet!");
 			}
 			usingMyOwnSuperServer = false;
 			sendLine("QUIT");
@@ -220,13 +224,14 @@ public class Connector {
 	 * 
 	 * @return ArrayList<{@link FTPFile}> in which are the information about files in the current directory on the server
 	 * @throws IOException
+	 * @throws ConnectionException 
 	 */
-	public synchronized ArrayList<FTPFile> list() throws IOException {
+	public synchronized ArrayList<FTPFile> list() throws IOException, ConnectionException {
 		//	Object[] o = pasv();
 		//	String ip=(String)o[0];
 		//	int port = (int)o[1];
 		//	dataSocket = new Socket(ip,port);
-		if (!pasv()) throw new IOException("Problem with PASV");
+		if (!pasv()) throw new ConnectionException("Problem with PASV");
 		return sendListLine();
 	}
 
@@ -235,9 +240,10 @@ public class Connector {
 	 * 
 	 * @return {@see ArrayList} of {@link FTPFile} which represents file on the server 
 	 * @throws IOException
+	 * @throws ConnectionException 
 	 */
 	
-	public synchronized ArrayList<FTPFile> sendListLine() throws IOException {
+	public synchronized ArrayList<FTPFile> sendListLine() throws IOException, ConnectionException {
 		sendLine("LIST");
 		BufferedReader readList = new BufferedReader(new InputStreamReader(dataSocket.getInputStream()));
 		String response = getAllResponses("150", read.readLine());
@@ -257,12 +263,12 @@ public class Connector {
 		}
 		else {
 			dataSocket.close();
-			throw new IOException("List Problem" + response);
+			throw new ConnectionException("List Problem" + response);
 		}
 		response = read.readLine();
 		response = getAllResponses("226", response);
 		if (!response.startsWith("226 ")) {
-			throw new IOException("List Problem" + response);
+			throw new ConnectionException("List Problem" + response);
 		}
 		return files;
 	}
@@ -275,14 +281,15 @@ public class Connector {
 	 * @return true if everything went well
 	 * @throws IOException
 	 * @throws FileNotFoundException
+	 * @throws ConnectionException 
 	 */
-	public boolean sendStorCommand(File file, boolean isStor) throws IOException, FileNotFoundException {
+	public boolean sendStorCommand(File file, boolean isStor) throws IOException, FileNotFoundException, ConnectionException {
 		String filename = file.getName();
 		if (isStor) sendLine("STOR " + filename);
 		else sendLine("APPE " + filename);
 		if (!CanMoveFile()) {
 			dataSocket.close();
-			throw new IOException("Can't send/download a file");
+			throw new ConnectionException("Can't send/download a file");
 		}
 		input = new BufferedInputStream(new FileInputStream(file));
 		output = new BufferedOutputStream(dataSocket.getOutputStream());
@@ -297,12 +304,13 @@ public class Connector {
 	 * @param filename name of the file on server (which we want download)
 	 * @return true if everything well as expected
 	 * @throws IOException
+	 * @throws ConnectionException 
 	 */
-	public boolean sendRetrCommand(File file, String filename) throws IOException {
+	public boolean sendRetrCommand(File file, String filename) throws IOException, ConnectionException {
 		sendLine("RETR " + filename);
 		if (!CanMoveFile()) {
 			dataSocket.close();
-			throw new IOException("Can't send/download a file");
+			throw new ConnectionException("Can't send/download a file");
 		}
 		input = new BufferedInputStream(dataSocket.getInputStream());
 		output = new BufferedOutputStream(new FileOutputStream(file));
@@ -316,8 +324,9 @@ public class Connector {
 	 * @return true if everything worked
 	 * @throws FileNotFoundException
 	 * @throws IOException
+	 * @throws ConnectionException 
 	 */
-	public boolean sendAppeCommand(File file) throws FileNotFoundException, IOException {
+	public boolean sendAppeCommand(File file) throws FileNotFoundException, IOException, ConnectionException {
 		return sendStorCommand(file, false);
 	}
 
@@ -325,11 +334,16 @@ public class Connector {
 	 * Sends file to the server (takes care of PASV and all this stuff)
 	 * 
 	 * @param file file we want to send to the server
+	 * @param isStor true if we want to send STOR line; false if line should be APPE
 	 * @return true if everything is fine (sending was completed)
 	 * @throws IOException
+	 * @throws ConnectionException 
 	 */
-	public synchronized boolean sendFile(File file) throws IOException {
-		if (pasv()) return sendStorCommand(file, true);
+	public synchronized boolean sendFile(File file, boolean isStor) throws IOException, ConnectionException {
+		if (pasv()) {
+			if (isStor) return sendStorCommand(file, true);
+			else return sendAppeCommand(file);
+		}
 		else return false;
 	}
 
@@ -340,8 +354,9 @@ public class Connector {
 	 * @param filename full path to the file which we want to download from server
 	 * @return true if everything is fine (sending was completed)
 	 * @throws IOException
+	 * @throws ConnectionException 
 	 */
-	public synchronized boolean getFile(File file, String filename) throws IOException {
+	public synchronized boolean getFile(File file, String filename) throws IOException, ConnectionException {
 		if (pasv()) return sendRetrCommand(file, filename);
 		else return false;
 	}
@@ -397,8 +412,9 @@ public class Connector {
 	 * @param directoryToSend {@see File} which represents directory that we want to send to the server.
 	 * @return true if all went as expected; false otherwise
 	 * @throws IOException
+	 * @throws ConnectionException 
 	 */
-	public synchronized boolean sendDirectory(File directoryToSend) throws IOException {
+	public synchronized boolean sendDirectory(File directoryToSend) throws IOException, ConnectionException {
 		File[] list = directoryToSend.listFiles();
 		ArrayList<File> directoriesList = new ArrayList<File>();
 		String directoryName = directoryToSend.getName();
@@ -408,7 +424,7 @@ public class Connector {
 			cwd(directoryName);
 		}
 		for (File f : list) {
-			if (f.isFile()) sendFile(f);
+			if (f.isFile()) sendFile(f, true);
 			if (f.isDirectory()) directoriesList.add(f);
 		}
 		for (File directory : directoriesList) {
@@ -425,8 +441,9 @@ public class Connector {
 	 * @param directorypath path of directory we want to get (on the server)
 	 * @return true if everything went well; false otherwise
 	 * @throws IOException
+	 * @throws ConnectionException 
 	 */
-	public synchronized boolean getDirectory(File localDirectory, String directorypath) throws IOException {
+	public synchronized boolean getDirectory(File localDirectory, String directorypath) throws IOException, ConnectionException {
 		if(!localDirectory.exists()) localDirectory.mkdir();
 		boolean status = true;
 		cwd(directorypath);
@@ -452,13 +469,13 @@ public class Connector {
 	 * 
 	 * @return if dataSocket connected to server - true; else - false
 	 * @throws IOException
+	 * @throws ConnectionException 
 	 */
-	public synchronized boolean pasv() throws IOException {
+	public synchronized boolean pasv() throws IOException, ConnectionException {
 		sendLine("PASV");
 		String response = getAllResponses("227", read.readLine());
 		if (!response.startsWith("227 ")) {
-			throw new IOException("Can't access passive mode "
-					+ response);
+			throw new ConnectionException("Can't access passive mode " + response);
 		}
 
 		String ip = null;
@@ -486,12 +503,13 @@ public class Connector {
 	 * @param dirpath path of the directory to be made (if it will be created in current working directory, can be only name of directory)
 	 * @return true if everything went well; false otherwise
 	 * @throws IOException
+	 * @throws ConnectionException 
 	 */
-	public synchronized boolean makeDirectory(String dirpath) throws IOException {
+	public synchronized boolean makeDirectory(String dirpath) throws IOException, ConnectionException {
 		sendLine("MKD " + dirpath);
 		String response = getAllResponses("257", read.readLine());
 		if (!response.startsWith("257 ")) {
-			throw new IOException("There is a problem with making directory" + response);
+			throw new ConnectionException("There is a problem with making directory" + response);
 		}
 		else return true;
 	}
@@ -502,8 +520,9 @@ public class Connector {
 	 * @param dirname name (or path) of the directory that we want to remove
 	 * @return true if everything went well; false otherwise
 	 * @throws IOException
+	 * @throws ConnectionException 
 	 */
-	public synchronized boolean removeDirectory(String dirname) throws IOException {
+	public synchronized boolean removeDirectory(String dirname) throws IOException, ConnectionException {
 		cwd(dirname);
 		ArrayList<FTPFile> list = list();
 		ArrayList<FTPFile> directoriesList = new ArrayList<FTPFile>();
@@ -535,12 +554,13 @@ public class Connector {
 	 * @param filename name of the file that we want to delete
 	 * @return true if everything went well; false otherwise
 	 * @throws IOException
+	 * @throws ConnectionException 
 	 */
-	public synchronized boolean removeFile(String filename) throws IOException {
+	public synchronized boolean removeFile(String filename) throws IOException, ConnectionException {
 		sendLine("DELE " + filename);
 		String response = getAllResponses("250", read.readLine());
 		if (!response.startsWith("250 ")) {
-			throw new IOException("There is a problem with removing file" + response);
+			throw new ConnectionException("There is a problem with removing file" + response);
 		}
 		else return true;
 	}
@@ -551,11 +571,12 @@ public class Connector {
 	 * @param filename name of the file we want to create
 	 * @return true if everything went well; false otherwise
 	 * @throws IOException
+	 * @throws ConnectionException 
 	 */
-	public synchronized boolean makeFile(String filename) throws IOException {
+	public synchronized boolean makeFile(String filename) throws IOException, ConnectionException {
 		File f = new File(filename);
 		f.createNewFile();
-		boolean test = sendFile(f);
+		boolean test = sendFile(f, true);
 		f.delete();
 		return test;
 	}
@@ -567,17 +588,18 @@ public class Connector {
 	 * @param newFilename name of the file(or directory) to which we want to change
 	 * @return true if everything went well; false otherwise
 	 * @throws IOException
+	 * @throws ConnectionException 
 	 */
-	public synchronized boolean changeName(String oldFilename, String newFilename) throws IOException {
+	public synchronized boolean changeName(String oldFilename, String newFilename) throws IOException, ConnectionException {
 		sendLine("RNFR " + oldFilename);
 		String response = getAllResponses("350", read.readLine());
 		if (!response.startsWith("350 ")) {
-			throw new IOException("There is a problem with renaming file " + response);
+			throw new ConnectionException("There is a problem with renaming file " + response);
 		}
 		sendLine("RNTO " + newFilename);
 		response = getAllResponses("250", read.readLine());
 		if (!response.startsWith("250 ")) {
-			throw new IOException("There is a problem with renaming file " + response);
+			throw new ConnectionException("There is a problem with renaming file " + response);
 		}
 		return true;
 	}
@@ -589,14 +611,15 @@ public class Connector {
 	 * @param rights rights to which we want to change (must be numeric, like 777 or 644 etc.)
 	 * @return true if everything went well; false otherwise
 	 * @throws IOException
+	 * @throws ConnectionException 
 	 */
-	public synchronized boolean changeRights(String filename, String rights) throws IOException {
+	public synchronized boolean changeRights(String filename, String rights) throws IOException, ConnectionException {
 		//TODO
 		if (usingMyOwnSuperServer) sendLine("CHMOD " + filename + " " + rights.substring(0,2));
 		else sendLine("SITE CHMOD " + rights + " " + filename);
 		String response = getAllResponses("200", read.readLine());
 		if (!response.startsWith("200 ")) {
-			throw new IOException("There is a problem with changing rights to file/directory " + response);
+			throw new ConnectionException("There is a problem with changing rights to file/directory " + response);
 		}
 		return true;
 	}
@@ -697,6 +720,8 @@ public class Connector {
 					throw new RuntimeException("Server disconnected!");
 				} catch (NullPointerException e) {
 					throw new RuntimeException("Server disconnected!");
+				} catch (ConnectionException e) {
+					throw new RuntimeException("Problem with disconnecting");
 				}
 			}
 		};

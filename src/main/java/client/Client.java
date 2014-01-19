@@ -5,6 +5,8 @@ import java.io.IOException;
 import java.net.UnknownHostException;
 import java.util.ArrayList;
 
+import exception.ConnectionException;
+
 public class Client {
 
 	/**
@@ -47,9 +49,10 @@ public class Client {
 	 * @param port server port number
 	 * @throws UnknownHostException
 	 * @throws IOException
+	 * @throws ConnectionException 
 	 */
 	public void connectToServer(String username, String password, String hostname, int port)
-			throws UnknownHostException, IOException {
+			throws UnknownHostException, IOException, ConnectionException {
 		connection = new Connector(h);
 		connection.connectToServer(hostname, port, username, password);
 	}
@@ -58,8 +61,9 @@ public class Client {
 	 * Disconnects from server
 	 * 
 	 * @throws IOException
+	 * @throws ConnectionException 
 	 */
-	public void disconnectFromServer() throws IOException {
+	public void disconnectFromServer() throws IOException, ConnectionException {
 		connection.disconnect();
 	}
 
@@ -78,8 +82,9 @@ public class Client {
 	 * 
 	 * @return list of {@link FTPFile} which represents files on server 
 	 * @throws IOException
+	 * @throws ConnectionException 
 	 */
-	public ArrayList<FTPFile> list() throws IOException {
+	public ArrayList<FTPFile> list() throws IOException, ConnectionException {
 		return connection.list();
 	}
 
@@ -99,11 +104,12 @@ public class Client {
 	 * 
 	 * @param fileToServer File which we want to send
 	 * @throws IOException
+	 * @throws ConnectionException 
 	 */
-	public void sendFile(File fileToServer) throws IOException {
-		boolean sendCompleted = connection.sendFile(fileToServer);
+	public void sendFile(File fileToServer, boolean isStor) throws IOException, ConnectionException {
+		boolean sendCompleted = connection.sendFile(fileToServer, isStor);
 		if (!sendCompleted) {
-			throw new IOException("There was a problem with sending your file");
+			throw new ConnectionException("There was a problem with sending your file");
 		}
 	}
 
@@ -112,11 +118,12 @@ public class Client {
 	 * 
 	 * @param directoryToSend directory which we want to send
 	 * @throws IOException
+	 * @throws ConnectionException 
 	 */
-	public void sendDirectory(File directoryToSend) throws IOException {
+	public void sendDirectory(File directoryToSend) throws IOException, ConnectionException {
 		boolean sendCompleted = connection.sendDirectory(directoryToSend);
 		if (!sendCompleted) {
-			throw new IOException("There was a problem with sending your directory");
+			throw new ConnectionException("There was a problem with sending your directory");
 		}
 	}
 
@@ -126,11 +133,12 @@ public class Client {
 	 * @param fileToComputer File object which represents file we want to get on local computer
 	 * @param remotePath name (or full path) of the file we want to get
 	 * @throws IOException
+	 * @throws ConnectionException 
 	 */
-	public void getFile(File fileToComputer, String remotePath) throws IOException {
+	public void getFile(File fileToComputer, String remotePath) throws IOException, ConnectionException {
 		boolean getCompleted = connection.getFile(fileToComputer, remotePath);
 		if (!getCompleted) {
-			throw new IOException("There was problem with downloading your file");
+			throw new ConnectionException("There was problem with downloading your file");
 		}
 	}
 
@@ -140,12 +148,13 @@ public class Client {
 	 * @param directoryToGet File object which represents directory we want to get on local computer
 	 * @param remoteDirectoryname name (of full path) of the directory we want to get
 	 * @throws IOException
+	 * @throws ConnectionException 
 	 */
-	public void getDirectory(File directoryToGet, String remoteDirectoryname) throws IOException {
+	public void getDirectory(File directoryToGet, String remoteDirectoryname) throws IOException, ConnectionException {
 		directoryToGet.mkdirs();
 		boolean getCompleted = connection.getDirectory(directoryToGet, remoteDirectoryname);
 		if (!getCompleted) {
-			throw new IOException("There was problem with downloading your directory");
+			throw new ConnectionException("There was problem with downloading your directory");
 		}
 	}
 
@@ -154,11 +163,12 @@ public class Client {
 	 * 
 	 * @param name name of the directory we want to create
 	 * @throws IOException
+	 * @throws ConnectionException 
 	 */
-	public void createRemoteDirectory(String name) throws IOException {
+	public void createRemoteDirectory(String name) throws IOException, ConnectionException {
 		boolean getCompleted = connection.makeDirectory(name);
 		if (!getCompleted) {
-			throw new IOException("There was a problem with making a directory");
+			throw new ConnectionException("There was a problem with making a directory");
 		}
 	}
 
@@ -167,12 +177,13 @@ public class Client {
 	 * 
 	 * @param filename name of the file we want to create
 	 * @throws IOException
+	 * @throws ConnectionException 
 	 */
-	public void createRemoteFile(String filename) throws IOException {
+	public void createRemoteFile(String filename) throws IOException, ConnectionException {
 		boolean getCompleted;
 		getCompleted = connection.makeFile(filename);
 		if (!getCompleted) {
-			throw new IOException("There was a problem with making a file");
+			throw new ConnectionException("There was a problem with making a file");
 		}
 	}
 
@@ -182,8 +193,9 @@ public class Client {
 	 * @param name name of the file (or directory) we want to remove from server
 	 * @param isDirectory true if we want to delete directory; false otherwise
 	 * @throws IOException
+	 * @throws ConnectionException 
 	 */
-	public void deleteRemoteFile(String name, boolean isDirectory) throws IOException {
+	public void deleteRemoteFile(String name, boolean isDirectory) throws IOException, ConnectionException {
 		if (isDirectory) connection.removeDirectory(name);
 		else connection.removeFile(name);
 	}
@@ -194,8 +206,9 @@ public class Client {
 	 * @param oldFilename old name of file
 	 * @param newFilename new name of file
 	 * @throws IOException
+	 * @throws ConnectionException 
 	 */
-	public void changeRemoteFilename(String oldFilename, String newFilename) throws IOException {
+	public void changeRemoteFilename(String oldFilename, String newFilename) throws IOException, ConnectionException {
 		connection.changeName(oldFilename, newFilename);
 	}
 
@@ -205,8 +218,9 @@ public class Client {
 	 * @param filename name (or full path) of the file
 	 * @param rights rights to which we want change (must be numeric like 777 or 644 etc.)
 	 * @throws IOException
+	 * @throws ConnectionException 
 	 */
-	public void changeRights(String filename, String rights) throws IOException {
+	public void changeRights(String filename, String rights) throws IOException, ConnectionException {
 		connection.changeRights(filename, rights);
 	}
 
@@ -216,8 +230,9 @@ public class Client {
 	 * @param command command line
 	 * @param localWorkingPath currently working local path (is used in sending/geting files)
 	 * @throws IOException
+	 * @throws ConnectionException 
 	 */
-	public void sendCommand(String command, String localWorkingPath) throws IOException {
+	public void sendCommand(String command, String localWorkingPath) throws IOException, ConnectionException {
 		String com = command;
 		if (command.contains(" ")) com = formatInsertedCommand(command);
 		String valueAfterCommand = null;
@@ -283,7 +298,7 @@ public class Client {
 			break;
 		case "put" :
 			File putFile = new File(localWorkingPath + File.separator + valueAfterCommand);
-			connection.sendFile(putFile);
+			connection.sendFile(putFile, true);
 			break;
 		case "ls" :
 			connection.list();
@@ -325,8 +340,9 @@ public class Client {
 	 * @param password password
 	 * @throws UnknownHostException
 	 * @throws IOException
+	 * @throws ConnectionException 
 	 */
-	public void ftpCommand(String host, int port, String username, String password) throws UnknownHostException, IOException {
+	public void ftpCommand(String host, int port, String username, String password) throws UnknownHostException, IOException, ConnectionException {
 		if (port == -1) port = 21;
 		connectToServer(username, password, host, port);
 	}

@@ -22,6 +22,7 @@ import javax.swing.JPasswordField;
 import javax.swing.JButton;
 import javax.swing.ListSelectionModel;
 import javax.swing.SwingUtilities;
+
 import java.awt.dnd.DnDConstants;
 import java.awt.dnd.DragGestureEvent;
 import java.awt.dnd.DragGestureListener;
@@ -39,6 +40,7 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
+
 import javax.swing.JTextArea;
 import javax.swing.JScrollPane;
 import javax.swing.event.ListSelectionEvent;
@@ -50,7 +52,10 @@ import javax.swing.JTable;
 
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
+
 import javax.swing.BoxLayout;
+
+import exception.ConnectionException;
 
 /**
  * Class in which is initialized main window of the client application
@@ -168,10 +173,6 @@ public class ClientMainFrame {
 	 * Handler for {@link RuntimeException} from threads in {@link Connector}
 	 */
 	private Thread.UncaughtExceptionHandler handler;
-	/**
-	 * text field in which user can types commands
-	 */
-	private JTextField commandField;
 
 	/**
 	 * Launch the application.
@@ -262,7 +263,7 @@ public class ClientMainFrame {
 							ftpPath = serverConnect.pwd();
 							ftpFiles = serverConnect.list();
 							setFtpTableData(ftpFiles);
-						} catch (NumberFormatException | IOException e) {
+						} catch (NumberFormatException | IOException | ConnectionException e) {
 							throwException(e);
 						}
 					}
@@ -288,7 +289,7 @@ public class ClientMainFrame {
 							if (!serverConnect.isConnected()) throw new IOException("You haven't connected yet!");
 							serverConnect.disconnectFromServer();
 							clearFTPFileList();
-						} catch (IOException e) {
+						} catch (IOException | ConnectionException e) {
 							throwException(e);
 						}
 					}
@@ -301,7 +302,7 @@ public class ClientMainFrame {
 		JLabel lblCommand = new JLabel("COMMAND");
 		menu.add(lblCommand);
 
-		commandField = new JTextField();
+		final JTextField commandField = new JTextField();
 		commandField.addActionListener(new ActionListener() {
 			public void actionPerformed(ActionEvent arg0) {
 				new Thread() {
@@ -310,17 +311,17 @@ public class ClientMainFrame {
 						try {
 							String command = commandField.getText();
 							if (command.startsWith("ftp")) {
-								int port = -1;
+								int port = 3021;
 								if (!textPort.getText().isEmpty()) port = Integer.parseInt(textPort.getText());
 								serverConnect.ftpCommand(textHost.getText(), port, textLogin.getText(), String.copyValueOf(passwordField.getPassword()));
 							}
 							else executeCommand(commandField.getText());
 							commandField.setText("");
-						} catch (IOException e) {
+						} catch (IOException | ConnectionException e) {
 							throwException(e);
 						}
 					}
-				};
+				}.start();
 			}
 		});
 		menu.add(commandField);
@@ -512,7 +513,7 @@ public class ClientMainFrame {
 				if (dragLocal) {
 					try {
 						sendFileByDrop(row);
-					} catch (IOException e1) {
+					} catch (IOException | ConnectionException e1) {
 						throwException(e1);
 					}
 				}
@@ -533,7 +534,7 @@ public class ClientMainFrame {
 				if (dragLocal) {
 					try {
 						sendFileByDrop(-1);
-					} catch (IOException e1) {
+					} catch (IOException | ConnectionException e1) {
 						throwException(e1);
 					}
 				}
@@ -770,7 +771,7 @@ public class ClientMainFrame {
 						ftpFiles = serverConnect.list();
 						setFtpTableData(ftpFiles);	
 					}
-				} catch(IOException e) {
+				} catch(IOException | ConnectionException e) {
 					throwException(e);
 				}
 			}
@@ -802,8 +803,9 @@ public class ClientMainFrame {
 	 * 
 	 * @param rowOfFtpTable row of ftpTable at which file was dropped
 	 * @throws IOException
+	 * @throws ConnectionException 
 	 */
-	private void sendFileByDrop(int rowOfFtpTable) throws IOException {
+	private void sendFileByDrop(int rowOfFtpTable) throws IOException, ConnectionException {
 		int row = localTable.getSelectedRow();
 		String filename = (String) localTable.getValueAt(row, 1);
 		File fileToServer = new File(fileRoot + File.separator + filename);
@@ -826,10 +828,10 @@ public class ClientMainFrame {
 					if (isDirectory) serverConnect.getDirectory(fileToGet,filename);
 					else serverConnect.getFile(fileToGet, filename);
 					refreshCurrentDirectory();
-				} catch (IOException e) {
+				} catch (IOException | ConnectionException e) {
 					try {
 						serverConnect.sendCommand("ABOR", fileRoot.getAbsolutePath());
-					} catch (IOException e1) {
+					} catch (IOException | ConnectionException e1) {
 						throwException(e1);
 					}
 					throwException(e);
@@ -845,14 +847,15 @@ public class ClientMainFrame {
 	 * @param isDirectory true if we are sending directory
 	 */
 	public void sendToServer(final File fileToSend, final boolean isDirectory) {
+		//TODO opportunity to append the file
 		new Thread() {
 			@Override
 			public void run() {
 				try {
 					if (isDirectory) serverConnect.sendDirectory(fileToSend);
-					else serverConnect.sendFile(fileToSend);
+					else serverConnect.sendFile(fileToSend, true);
 					refreshFTPDirectory();
-				} catch (IOException e) {
+				} catch (IOException | ConnectionException e) {
 					throwException(e);
 				}
 			}
@@ -870,7 +873,7 @@ public class ClientMainFrame {
 			if (createDirectory) serverConnect.createRemoteDirectory(name);
 			else serverConnect.createRemoteFile(name);
 			refreshFTPDirectory();
-		} catch (IOException e) {
+		} catch (IOException | ConnectionException e) {
 			throwException(e);
 		}
 
@@ -889,7 +892,7 @@ public class ClientMainFrame {
 				try {
 					serverConnect.deleteRemoteFile(filename, isDirectory);
 					refreshFTPDirectory();
-				} catch (IOException e) {
+				} catch (IOException | ConnectionException e) {
 					throwException(e);
 				}
 			}
@@ -906,7 +909,7 @@ public class ClientMainFrame {
 		try {
 			serverConnect.changeRemoteFilename(oldFilename, newFilename);
 			refreshFTPDirectory();
-		} catch (IOException e) {
+		} catch (IOException | ConnectionException e) {
 			throwException(e);
 		}
 
@@ -922,7 +925,7 @@ public class ClientMainFrame {
 		try {
 			serverConnect.changeRights(filename, rights);
 			refreshFTPDirectory();
-		} catch (IOException e) {
+		} catch (IOException | ConnectionException e) {
 			throwException(e);
 		}
 	}
@@ -966,7 +969,7 @@ public class ClientMainFrame {
 			try {
 				serverConnect.changeRemoteFilename(filename, maybeDir + "/" + filename);
 				refreshFTPDirectory();
-			} catch (IOException e1) {
+			} catch (IOException | ConnectionException e1) {
 				throwException(e1);
 			}
 		}
@@ -977,8 +980,9 @@ public class ClientMainFrame {
 	 * 
 	 * @param command line of command
 	 * @throws IOException
+	 * @throws ConnectionException 
 	 */
-	private void executeCommand(String command) throws IOException {
+	private void executeCommand(String command) throws IOException, ConnectionException {
 		if (command.endsWith(" ")) command = command.trim();
 		serverConnect.sendCommand(command, fileRoot.getAbsolutePath());
 	}
@@ -995,8 +999,9 @@ public class ClientMainFrame {
 	 * method refresh ftpTable
 	 * 
 	 * @throws IOException
+	 * @throws ConnectionException 
 	 */
-	public void refreshFTPDirectory() throws IOException {
+	public void refreshFTPDirectory() throws IOException, ConnectionException {
 		ftpFiles = serverConnect.list();
 		setFtpTableData(ftpFiles);
 	}
@@ -1055,7 +1060,7 @@ public class ClientMainFrame {
 				e.getMessage(),
 				"Problem!",
 				JOptionPane.WARNING_MESSAGE);
-		e.printStackTrace();
+		//e.printStackTrace();
 		return ;
 	}
 }

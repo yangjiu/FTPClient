@@ -287,9 +287,10 @@ public class Connector {
 		String filename = file.getName();
 		if (isStor) sendLine("STOR " + filename);
 		else sendLine("APPE " + filename);
-		if (!CanMoveFile()) {
+		String response = getAllResponses("150", read.readLine());
+		if (!response.startsWith ("150 ")) {
 			dataSocket.close();
-			throw new ConnectionException("Can't send/download a file");
+			throw new ConnectionException("Can't send the file: " + response);
 		}
 		input = new BufferedInputStream(new FileInputStream(file));
 		output = new BufferedOutputStream(dataSocket.getOutputStream());
@@ -308,9 +309,10 @@ public class Connector {
 	 */
 	public boolean sendRetrCommand(File file, String filename) throws IOException, ConnectionException {
 		sendLine("RETR " + filename);
-		if (!CanMoveFile()) {
+		String response = getAllResponses("150", read.readLine());
+		if (!response.startsWith ("150 ")) {
 			dataSocket.close();
-			throw new ConnectionException("Can't send/download a file");
+			throw new ConnectionException("Problem with downloading a file:" + response);
 		}
 		input = new BufferedInputStream(dataSocket.getInputStream());
 		output = new BufferedOutputStream(new FileOutputStream(file));
@@ -380,18 +382,6 @@ public class Connector {
 		if (input != null) input.close();
 		dataSocket.close();
 		return transferingFileCompleted();
-	}
-
-	/**
-	 * Checks if respond from the server is as it should be
-	 * 
-	 * @return true if everything is fine; false otherwise
-	 * @throws IOException
-	 */
-	private boolean CanMoveFile() throws IOException {
-		String response = getAllResponses("150", read.readLine());
-		if (!response.startsWith ("150 ")) return false;
-		else return true;
 	}
 
 	/**
@@ -489,7 +479,7 @@ public class Connector {
 				ip = tokenizer.nextToken() + "." + tokenizer.nextToken() + "." + tokenizer.nextToken() + "." + tokenizer.nextToken();
 				port = Integer.parseInt(tokenizer.nextToken()) * 256 + Integer.parseInt(tokenizer.nextToken());
 			} catch (Exception e) {
-				throw new IOException("Received bad data link connection " + response);
+				throw new IOException("Received bad data link connection: " + response);
 			}
 		}
 		dataSocket = new Socket(ip,port);
@@ -509,7 +499,7 @@ public class Connector {
 		sendLine("MKD " + dirpath);
 		String response = getAllResponses("257", read.readLine());
 		if (!response.startsWith("257 ")) {
-			throw new ConnectionException("There is a problem with making directory" + response);
+			throw new ConnectionException("There is a problem with making directory: " + response);
 		}
 		else return true;
 	}
@@ -560,7 +550,7 @@ public class Connector {
 		sendLine("DELE " + filename);
 		String response = getAllResponses("250", read.readLine());
 		if (!response.startsWith("250 ")) {
-			throw new ConnectionException("There is a problem with removing file" + response);
+			throw new ConnectionException("There is a problem with removing file: " + response);
 		}
 		else return true;
 	}
@@ -594,12 +584,12 @@ public class Connector {
 		sendLine("RNFR " + oldFilename);
 		String response = getAllResponses("350", read.readLine());
 		if (!response.startsWith("350 ")) {
-			throw new ConnectionException("There is a problem with renaming file " + response);
+			throw new ConnectionException("There is a problem with renaming file: " + response);
 		}
 		sendLine("RNTO " + newFilename);
 		response = getAllResponses("250", read.readLine());
 		if (!response.startsWith("250 ")) {
-			throw new ConnectionException("There is a problem with renaming file " + response);
+			throw new ConnectionException("There is a problem with renaming file: " + response);
 		}
 		return true;
 	}
@@ -614,12 +604,11 @@ public class Connector {
 	 * @throws ConnectionException 
 	 */
 	public synchronized boolean changeRights(String filename, String rights) throws IOException, ConnectionException {
-		//TODO
-		if (usingMyOwnSuperServer) sendLine("CHMOD " + filename + " " + rights.substring(0,2));
+		if (usingMyOwnSuperServer) sendLine("CHMOD " + filename + " " + rights);
 		else sendLine("SITE CHMOD " + rights + " " + filename);
 		String response = getAllResponses("200", read.readLine());
 		if (!response.startsWith("200 ")) {
-			throw new ConnectionException("There is a problem with changing rights to file/directory " + response);
+			throw new ConnectionException("There is a problem with changing rights to file/directory: " + response);
 		}
 		return true;
 	}
@@ -703,8 +692,7 @@ public class Connector {
 			public void run() {
 				try {
 					sleep(1000*30);
-					for (int i=0;i<5;i++) {
-						if (killTimer) return ;
+					while(!killTimer) {
 						noop();
 						sleep(1000*30);
 					}

@@ -127,7 +127,7 @@ public class ClientMainFrame {
 	 */
 	private boolean cellSizesSet = false;
 
-	
+
 	/**
 	 * Table model for FTP table
 	 */
@@ -294,7 +294,7 @@ public class ClientMainFrame {
 						}
 					}
 				}.start();
-				
+
 			}
 		});
 		menu.add(btnDisconnect);
@@ -852,8 +852,31 @@ public class ClientMainFrame {
 			@Override
 			public void run() {
 				try {
+					boolean haveToShowDialog = false;
+					boolean appendFile = false;
+					for (FTPFile f : ftpFiles) {
+						if (fileToSend.getName().equals(f.getFilename())) haveToShowDialog = true;
+					}
+					if (haveToShowDialog) {
+						Object[] options = {"Overwrite",
+								"Append",
+						"Cancel"};
+						int n = JOptionPane.showOptionDialog(frmFtpClient,
+								"File already exists",
+								"A Silly Question",
+								JOptionPane.YES_NO_CANCEL_OPTION,
+								JOptionPane.QUESTION_MESSAGE,
+								null,
+								options,
+								options[2]);
+						if (n==2) return ;
+						if (n==1) appendFile=true;
+					}
 					if (isDirectory) serverConnect.sendDirectory(fileToSend);
-					else serverConnect.sendFile(fileToSend, true);
+					else {
+						if (appendFile) serverConnect.sendFile(fileToSend, false);
+						else serverConnect.sendFile(fileToSend, true);
+					}
 					refreshFTPDirectory();
 				} catch (IOException | ConnectionException e) {
 					throwException(e);

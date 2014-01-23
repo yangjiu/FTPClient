@@ -294,7 +294,7 @@ public class RightsDialog extends JDialog implements ActionListener {
 	 * method that compute new right
 	 * 
 	 * @param c checkbox
-	 * @return
+	 * @return numeric right
 	 */
 	private int getChangeValue(JCheckBox c) {
 		int value;
@@ -315,7 +315,7 @@ public class RightsDialog extends JDialog implements ActionListener {
 	 * 
 	 * 
 	 * @param c
-	 * @return
+	 * @return 0- owner line of checkboxes changed; 1-group line of checkboxes changed;2-others...
 	 */
 	private int getChangePosition(JCheckBox c) {
 		int changePosition;

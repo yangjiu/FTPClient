@@ -136,7 +136,8 @@ public class Connector {
 	 * @throws ConnectionException 
 	 */
 	public void sendUserCommand(String user) throws IOException, ConnectionException {
-		sendLine("USER " + user);
+		if (user.equals("")) sendLine("USER anonymous");
+		else sendLine("USER " + user);
 		String response = getAllResponses("331", read.readLine());
 		if (!response.startsWith("331 ")) {
 			if (timer != null) cancelNOOPDeamon();
@@ -152,7 +153,8 @@ public class Connector {
 	 * @throws ConnectionException 
 	 */
 	public void sendPassCommand(String pass) throws IOException, ConnectionException {
-		sendLine("PASS " + pass);
+		if (pass.equals("")) sendLine("PASS anonymous");
+		else sendLine("PASS " + pass);
 		String response = getAllResponses("230", read.readLine());
 		if (!response.startsWith("230 ")) {
 			if (timer != null) cancelNOOPDeamon();
@@ -165,7 +167,7 @@ public class Connector {
 	}
 
 	/**
-	 * Method that disconnects from the server (if not connected - throws {@see IOException} ), by sending QUIT command
+	 * Method that disconnects from the server (if not connected - throws {@link IOException} ), by sending QUIT command
 	 * 
 	 * @throws IOException
 	 * @throws ConnectionException 
@@ -220,7 +222,7 @@ public class Connector {
 
 	/**
 	 * Lists current directory. Returns ArrayList of {@link FTPFile} in which is stored information about content of current directory.
-	 * Executes {@link client.pasv()} method.
+	 * Executes {@link client.Connector#pasv()} method.
 	 * 
 	 * @return ArrayList<{@link FTPFile}> in which are the information about files in the current directory on the server
 	 * @throws IOException
@@ -236,9 +238,9 @@ public class Connector {
 	}
 
 	/**
-	 * Sends LIST command, and gets listing of current working directory, but IT DOESN'T SENDS {@link client.pasv} METHOD!
+	 * Sends LIST command, and gets listing of current working directory, but IT DOESN'T SENDS {@link client.Connector#pasv()} METHOD!
 	 * 
-	 * @return {@see ArrayList} of {@link FTPFile} which represents file on the server 
+	 * @return {@link ArrayList} of {@link FTPFile} which represents file on the server 
 	 * @throws IOException
 	 * @throws ConnectionException 
 	 */
@@ -397,9 +399,9 @@ public class Connector {
 	}
 
 	/**
-	 * Sends directory to the server. Uses {@link client.sendFile} and {@link makeDirectory} to achieve it. Is recursive.
+	 * Sends directory to the server. Uses {@link client.Connector#sendFile(File, boolean)} and {@link client.Connector#makeDirectory(String)} to achieve it. Is recursive.
 	 * 
-	 * @param directoryToSend {@see File} which represents directory that we want to send to the server.
+	 * @param directoryToSend {@link File} which represents directory that we want to send to the server.
 	 * @return true if all went as expected; false otherwise
 	 * @throws IOException
 	 * @throws ConnectionException 
@@ -427,7 +429,7 @@ public class Connector {
 	/**
 	 * Gets directory from server. 
 	 * 
-	 * @param localDirectory {@see File} which represents directory to which we want write directory from server
+	 * @param localDirectory {@link File} which represents directory to which we want write directory from server
 	 * @param directorypath path of directory we want to get (on the server)
 	 * @return true if everything went well; false otherwise
 	 * @throws IOException
